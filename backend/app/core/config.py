@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     # Device connector (local connector → cloud)
     DEVICE_CONNECTOR_API_KEY: str = "CHANGE_ME_connector_key"
 
+    # Supabase (GoTrue auth sync)
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+
     # Company defaults
     DEFAULT_TIMEZONE: str = "Asia/Kolkata"
     DEFAULT_LOP_POLICY: str = "WORKING_DAYS"

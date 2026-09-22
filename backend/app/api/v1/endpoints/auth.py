@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from api.deps import get_current_user, get_db, user_dict
 from core.config import settings
 from core.errors import ConflictError, UnauthorizedError, ValidationError, error_response, success_response
+from core.supabase_sync import sync_supabase_password, sync_supabase_user
 from core.security import create_access_token, hash_password, verify_password
 from models.enums import Role
 from models.user import User
@@ -51,6 +52,7 @@ def register_super_admin(body: RegisterSuperAdminRequest, db: Session = Depends(
     db.add(user)
     db.commit()
     db.refresh(user)
+    sync_supabase_user(body.email, body.password, body.full_name)
     return success_response(user_dict(user))
 
 
@@ -85,6 +87,7 @@ def change_password(
         raise ValidationError("Old password is incorrect")
     user.password_hash = hash_password(body.new_password)
     db.commit()
+    sync_supabase_password(user.email, body.new_password)
     return success_response({"message": "Password updated"})
 
 

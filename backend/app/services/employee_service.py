@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from core.audit import log_audit
 from core.errors import ConflictError, NotFoundError, ValidationError
 from core.security import hash_password
+from core.supabase_sync import sync_supabase_user
 from models.company import Company
 from models.device import Device
 from models.employee import Employee
@@ -416,9 +417,12 @@ def associate_user(
     email = (email or "").strip().lower()
     if not email:
         raise ValidationError("email is required")
+    created = False
     user = db.scalar(select(User).where(User.email == email))
     if user is None:
-        hashed = hash_password(password) if password else hash_password(secrets.token_urlsafe(16))
+        created = True
+        plain_password = password if password else secrets.token_urlsafe(16)
+        hashed = hash_password(plain_password)
         display_name = (
             " ".join(part for part in (emp.first_name, emp.last_name or "") if part)
             or emp.employee_code
@@ -437,6 +441,8 @@ def associate_user(
     db.flush()
     db.commit()
     db.refresh(user)
+    if created and user.email:
+        sync_supabase_user(email, plain_password, user.full_name)
     return user
 
 

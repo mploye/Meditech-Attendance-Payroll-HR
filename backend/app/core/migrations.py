@@ -41,6 +41,9 @@ def run_migrations(engine) -> None:
         return
 
     config = Config(_ALEMBIC_INI)
+    config.set_main_option(
+        "script_location", os.path.join(_BACKEND_ROOT, "alembic")
+    )
     command.upgrade(config, "head")
     logger.info("Alembic schema is at head.")
     Base.metadata.create_all(bind=engine)

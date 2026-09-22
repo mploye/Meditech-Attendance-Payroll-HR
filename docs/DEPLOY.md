@@ -37,7 +37,18 @@ Both assume the same app constraints:
 A record `hrms.example.com → <VM public IP>` at your registrar. Caddy needs this to
 resolve before issuing TLS (it retries automatically).
 
-### 3. Install Docker
+### 3. Install Docker (or use the bootstrap)
+
+Quick path — from the repo root, one script installs Docker, generates `.env`
+secrets, prompts for your domain, and starts the whole stack:
+
+```bash
+cd <repo root>
+sudo bash deploy/bootstrap.sh        # or DOMAIN=hrms.example.com sudo bash deploy/bootstrap.sh
+```
+
+Manual equivalent (same commands the script runs):
+
 ```bash
 ssh ubuntu@<VM_IP>
 sudo apt update && sudo apt install -y ca-certificates curl
@@ -76,7 +87,7 @@ employees/shifts/device.
 ```bash
 sudo mkdir -p /home/ubuntu/backups
 crontab -e
-# 0 2 * * * docker exec $(docker ps -qf name=db) pg_dump -U hrms hrms | gzip > /home/ubuntu/backups/hrms_$(date +\%F).sql.gz
+# 0 2 * * * cd /home/ubuntu/app && deploy/backup.sh >> /home/ubuntu/backups/cron.log 2>&1
 ```
 
 ### Day-to-day

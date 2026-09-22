@@ -1,0 +1,43 @@
+# --- Dependencies ---
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Next.js ---
+frontend/.next/
+frontend/out/
+frontend/next-env.d.ts
+
+# --- Builds / outputs ---
+dist/
+build/
+*.tsbuildinfo
+backend/generated/
+backend/backend/generated/
+frontend/public/payslips/
+
+# --- Runtime databases ---
+*.db
+*.db-journal
+backend/server.pid
+*.log
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

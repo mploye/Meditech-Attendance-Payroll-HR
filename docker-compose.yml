@@ -1,0 +1,76 @@
+# Free hosting stack — single Oracle Cloud "Always Free" ARM VM
+#   backend (FastAPI) + frontend (Next.js) + Postgres 16 + Caddy (auto-HTTPS)
+#
+# Usage (on the VM):
+#   curl -fsSL https://get.docker.com | sh
+#   git clone <your-repo> app && cd app
+#   cp .env.example .env            # fill in DOMAIN + secrets
+#   docker compose up -d --build
+#
+# Only Caddy is exposed on 80/443. Everything else stays on the internal network.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hrms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-hrms}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hrms} -d ${POSTGRES_DB:-hrms}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-hrms}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-hrms}
+      CORS_ORIGINS: ${PUBLIC_URL:?set PUBLIC_URL in .env}
+      APP_ENV: production
+      DEBUG: "false"
+      SCHEDULER_ENABLED: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_URL}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

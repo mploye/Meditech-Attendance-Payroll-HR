@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hrms-frontend
+  namespace: hrms
+  labels:
+    app.kubernetes.io/name: hrms-frontend
+spec:
+  selector:
+    app.kubernetes.io/name: hrms-frontend
+  ports:
+    - port: 3000
+      targetPort: http
+      name: http

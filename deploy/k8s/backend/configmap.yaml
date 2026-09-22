@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hrms-backend-config
+  namespace: hrms
+  labels:
+    app.kubernetes.io/part: backend
+data:
+  APP_ENV: "production"
+  DEBUG: "false"
+  # Comma-separated list of frontend origins allowed by CORS.
+  CORS_ORIGINS: "https://hrms.example.com"
+  # True keeps integrations in memory; set to false once real eSSL endpoints are provisioned.
+  ESSL_MOCK_MODE: "true"
+  ESSL_BASE_URL: "https://localhost/portal/api/essl/etimetracklite"
+  ESSL_TIMEOUT_SECONDS: "30"
+  ESSL_SYNC_INTERVAL_SECONDS: "300"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "1440"
+  # Single-instance scheduling inside the API process. Keep replicas=1 while enabled.
+  SCHEDULER_ENABLED: "true"
+  ATTENDANCE_PROCESS_INTERVAL_SECONDS: "900"

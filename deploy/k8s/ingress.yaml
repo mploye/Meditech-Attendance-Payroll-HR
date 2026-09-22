@@ -1,0 +1,44 @@
+# Ingress for a single-host deployment (nginx ingress controller):
+#   /api/* and /static/*  -> backend (FastAPI)
+#   everything else        -> frontend (Next.js)
+# The frontend image is built with NEXT_PUBLIC_API_URL=<ingress host>, so API
+# calls are same-origin (no cross-origin CORS traffic).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hrms
+  namespace: hrms
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    cert-manager.io/cluster-issuer: "letsencrypt"   # if using cert-manager
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - hrms.example.com   # TODO: replace with your domain
+      secretName: hrms-tls
+  rules:
+    - host: hrms.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: hrms-backend
+                port:
+                  number: 8000
+          - path: /static
+            pathType: Prefix
+            backend:
+              service:
+                name: hrms-backend
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hrms-frontend
+                port:
+                  number: 3000

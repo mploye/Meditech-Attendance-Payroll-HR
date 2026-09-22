@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hrms-backend
+  namespace: hrms
+  labels:
+    app.kubernetes.io/name: hrms-backend
+    app.kubernetes.io/part: backend
+spec:
+  # Keep at 1: DB migrations and the APScheduler run inside the app on startup
+  # (app/main.py). Scale out only after extracting migrations into a Job and
+  # the scheduler into a dedicated worker.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hrms-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hrms-backend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: backend
+          image: ghcr.io/yourorg/hrms-backend:1.0.0   # TODO: replace with your image
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: hrms-backend-config
+            - secretRef:
+                name: hrms-backend-secret
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5

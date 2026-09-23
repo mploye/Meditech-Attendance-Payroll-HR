@@ -114,7 +114,7 @@ export default function CrudPage({
           <Empty />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="mobile-stack w-full text-left text-sm">
               <thead className="border-b border-neutral-100 text-xs uppercase text-neutral-400">
                 <tr>
                   <th className="px-5 py-3 font-medium">Name</th>
@@ -127,7 +127,7 @@ export default function CrudPage({
                 {items.map((item) => (
                   <tr key={String(item.id)} className="hover:bg-neutral-50">
                     {renderRow(item)}
-                    <td className="px-5 py-3 text-right">
+                    <td className="actions px-5 py-3 text-right">
                       <button
                         onClick={() => remove(String(item.id))}
                         className="text-xs font-medium text-rose-500 hover:text-rose-700"

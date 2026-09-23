@@ -182,19 +182,19 @@ export default function EmployeesPage() {
 
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-neutral-100 px-5 py-3">
-          <Input placeholder="Search…" value={search} onChange={setSearch} className="w-56" />
+          <Input placeholder="Search…" value={search} onChange={setSearch} className="w-full sm:w-56" />
           <Select
             value={status}
             onChange={setStatus}
             options={STATUSES.map((v) => ({ value: v, label: v }))}
-            className="w-40"
+            className="w-full sm:w-40"
           />
         </div>
         {items.length === 0 ? (
           <Empty text="No employees found" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="mobile-stack w-full text-left text-sm">
               <thead className="border-b border-neutral-100 text-xs uppercase text-neutral-400">
                 <tr>
                   <th className="px-5 py-3 font-medium">Code</th>
@@ -208,16 +208,16 @@ export default function EmployeesPage() {
               <tbody className="divide-y divide-neutral-100">
                 {items.map((e) => (
                   <tr key={e.id} className="hover:bg-neutral-50">
-                    <td className="px-5 py-3 font-medium text-neutral-800">{e.employee_code}</td>
-                    <td className="px-5 py-3">{`${e.first_name} ${e.last_name || ""}`}</td>
-                    <td className="px-5 py-3 text-neutral-500">
+                    <td data-label="Code" className="px-5 py-3 font-medium text-neutral-800">{e.employee_code}</td>
+                    <td data-label="Name" className="px-5 py-3">{`${e.first_name} ${e.last_name || ""}`}</td>
+                    <td data-label="Department" className="px-5 py-3 text-neutral-500">
                       {departments.find((d) => d.id === e.department_id)?.name || "—"}
                     </td>
-                    <td className="px-5 py-3 text-neutral-500">
+                    <td data-label="Designation" className="px-5 py-3 text-neutral-500">
                       {designations.find((d) => d.id === e.designation_id)?.name || "—"}
                     </td>
-                    <td className="px-5 py-3 text-neutral-500">{e.phone || "—"}</td>
-                    <td className="px-5 py-3">
+                    <td data-label="Phone" className="px-5 py-3 text-neutral-500">{e.phone || "—"}</td>
+                    <td data-label="Status" className="px-5 py-3">
                       <Badge tone={statusTone(e.status)}>{e.status}</Badge>
                     </td>
                   </tr>

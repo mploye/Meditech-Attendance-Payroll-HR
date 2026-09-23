@@ -120,7 +120,7 @@ export default function DevicesPage() {
           <Empty text="No devices registered" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="mobile-stack w-full text-left text-sm">
               <thead className="border-b border-neutral-100 text-xs uppercase text-neutral-400">
                 <tr>
                   <th className="px-5 py-3 font-medium">Device</th>
@@ -134,21 +134,21 @@ export default function DevicesPage() {
               <tbody className="divide-y divide-neutral-100">
                 {items.map((d) => (
                   <tr key={d.id} className="hover:bg-neutral-50">
-                    <td className="px-5 py-3">
+                    <td data-label="Device" className="px-5 py-3">
                       <div className="font-medium text-neutral-800">{d.name}</div>
                       {d.location ? <div className="text-xs text-neutral-400">{d.location}</div> : null}
                     </td>
-                    <td className="px-5 py-3 text-neutral-500">{d.serial_number}</td>
-                    <td className="px-5 py-3 text-neutral-500">
+                    <td data-label="Serial" className="px-5 py-3 text-neutral-500">{d.serial_number}</td>
+                    <td data-label="Type" className="px-5 py-3 text-neutral-500">
                       {d.device_type} <span className="text-neutral-300">·</span> {d.provider}
                     </td>
-                    <td className="px-5 py-3 text-neutral-500">
+                    <td data-label="IP" className="px-5 py-3 text-neutral-500">
                       {d.ip_address ? `${d.ip_address}:${d.port ?? ""}` : "—"}
                     </td>
-                    <td className="px-5 py-3">
+                    <td data-label="Status" className="px-5 py-3">
                       <Badge tone={statusTone(d.status)}>{d.status}</Badge>
                     </td>
-                    <td className="px-5 py-3 text-right">
+                    <td className="actions px-5 py-3 text-right">
                       <div className="flex justify-end gap-2">
                         <Button variant="secondary" onClick={() => act(d.id, "test")} disabled={acting === d.id}>
                           Test

@@ -75,7 +75,7 @@ export default function AttendancePage() {
         subtitle="Punch logs processed into daily status"
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <Input type="date" value={date} onChange={setDate} className="w-44" />
+            <Input type="date" value={date} onChange={setDate} className="w-full sm:w-44" />
             <Button variant="secondary" onClick={() => run("sync")} disabled={busy}>
               Sync punches
             </Button>
@@ -94,7 +94,7 @@ export default function AttendancePage() {
           <Empty text="No daily records — sync punches then process the day" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="mobile-stack w-full text-left text-sm">
               <thead className="border-b border-neutral-100 text-xs uppercase text-neutral-400">
                 <tr>
                   <th className="px-5 py-3 font-medium">Employee</th>
@@ -109,20 +109,20 @@ export default function AttendancePage() {
               <tbody className="divide-y divide-neutral-100">
                 {rows.map((r) => (
                   <tr key={r.id} className="hover:bg-neutral-50">
-                    <td className="px-5 py-3">
+                    <td data-label="Employee" className="px-5 py-3">
                       <div className="font-medium text-neutral-800">
                         {r.employee_name || `${r.first_name || ""} ${r.last_name || ""}`.trim() || r.employee_id}
                       </div>
                       {r.employee_code ? <div className="text-xs text-neutral-400">{r.employee_code}</div> : null}
                     </td>
-                    <td className="px-5 py-3">
+                    <td data-label="Status" className="px-5 py-3">
                       <Badge tone={statusTone(r.status)}>{r.status}</Badge>
                     </td>
-                    <td className="px-5 py-3 text-neutral-500">{r.check_in ? String(r.check_in).slice(11, 16) : "—"}</td>
-                    <td className="px-5 py-3 text-neutral-500">{r.check_out ? String(r.check_out).slice(11, 16) : "—"}</td>
-                    <td className="px-5 py-3 text-neutral-500">{r.late_minutes ?? "—"}</td>
-                    <td className="px-5 py-3 text-neutral-500">{r.overtime_minutes ?? "—"}</td>
-                    <td className="px-5 py-3 text-neutral-500">{r.work_minutes ?? "—"}</td>
+                    <td data-label="In" className="px-5 py-3 text-neutral-500">{r.check_in ? String(r.check_in).slice(11, 16) : "—"}</td>
+                    <td data-label="Out" className="px-5 py-3 text-neutral-500">{r.check_out ? String(r.check_out).slice(11, 16) : "—"}</td>
+                    <td data-label="Late (min)" className="px-5 py-3 text-neutral-500">{r.late_minutes ?? "—"}</td>
+                    <td data-label="OT (min)" className="px-5 py-3 text-neutral-500">{r.overtime_minutes ?? "—"}</td>
+                    <td data-label="Work (min)" className="px-5 py-3 text-neutral-500">{r.work_minutes ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>

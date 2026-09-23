@@ -112,7 +112,7 @@ export default function PayslipsPage() {
           <Empty text="No payslips — generate them for a locked payroll period" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="mobile-stack w-full text-left text-sm">
               <thead className="border-b border-neutral-100 text-xs uppercase text-neutral-400">
                 <tr>
                   <th className="px-5 py-3 font-medium">Employee</th>
@@ -126,19 +126,19 @@ export default function PayslipsPage() {
               <tbody className="divide-y divide-neutral-100">
                 {rows.map((d) => (
                   <tr key={d.id} className="hover:bg-neutral-50">
-                    <td className="px-5 py-3">
+                    <td data-label="Employee" className="px-5 py-3">
                       <div className="font-medium text-neutral-800">{d.employee_name || d.employee_code}</div>
                       {d.employee_code ? <div className="text-xs text-neutral-400">{d.employee_code}</div> : null}
                     </td>
-                    <td className="px-5 py-3 text-neutral-500">₹{Number(d.gross_earnings || 0).toLocaleString("en-IN")}</td>
-                    <td className="px-5 py-3 text-neutral-500">₹{Number(d.total_deductions || 0).toLocaleString("en-IN")}</td>
-                    <td className="px-5 py-3 font-medium text-neutral-800">₹{Number(d.net_pay || 0).toLocaleString("en-IN")}</td>
-                    <td className="px-5 py-3">
+                    <td data-label="Gross" className="px-5 py-3 text-neutral-500">₹{Number(d.gross_earnings || 0).toLocaleString("en-IN")}</td>
+                    <td data-label="Deductions" className="px-5 py-3 text-neutral-500">₹{Number(d.total_deductions || 0).toLocaleString("en-IN")}</td>
+                    <td data-label="Net Pay" className="px-5 py-3 font-medium text-neutral-800">₹{Number(d.net_pay || 0).toLocaleString("en-IN")}</td>
+                    <td data-label="Status" className="px-5 py-3">
                       <Badge tone={statusTone(d.status || (d.downloaded ? "DOWNLOADED" : "GENERATED"))}>
                         {d.status || (d.downloaded ? "DOWNLOADED" : "GENERATED")}
                       </Badge>
                     </td>
-                    <td className="px-5 py-3 text-right">
+                    <td className="actions px-5 py-3 text-right">
                       <Button variant="secondary" onClick={() => openPdf(d.id)}>PDF</Button>
                     </td>
                   </tr>

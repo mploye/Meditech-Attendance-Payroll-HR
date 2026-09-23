@@ -16,9 +16,9 @@ export default function DesignationsPage() {
       ]}
       renderRow={(item) => (
         <>
-          <td className="px-5 py-3 font-medium text-neutral-800">{String(item.name)}</td>
-          <td className="px-5 py-3 text-neutral-500">{String(item.code || "—")}</td>
-          <td className="px-5 py-3 text-neutral-500">
+          <td data-label="Name" className="px-5 py-3 font-medium text-neutral-800">{String(item.name)}</td>
+          <td data-label="Code" className="px-5 py-3 text-neutral-500">{String(item.code || "—")}</td>
+          <td data-label="Level" className="px-5 py-3 text-neutral-500">
             {item.level ? `Level ${item.level}` : "—"}
           </td>
         </>

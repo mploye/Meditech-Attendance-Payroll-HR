@@ -58,14 +58,14 @@ export default function AuditPage() {
 
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-neutral-100 px-5 py-3">
-          <Input placeholder="Filter by action" value={action} onChange={setAction} className="w-56" />
-          <Input placeholder="Entity type" value={entityType} onChange={setEntityType} className="w-56" />
+          <Input placeholder="Filter by action" value={action} onChange={setAction} className="w-full sm:w-56" />
+          <Input placeholder="Entity type" value={entityType} onChange={setEntityType} className="w-full sm:w-56" />
         </div>
         {rows.length === 0 ? (
           <Empty text="No audit events" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="mobile-stack w-full text-left text-sm">
               <thead className="border-b border-neutral-100 text-xs uppercase text-neutral-400">
                 <tr>
                   <th className="px-5 py-3 font-medium">When</th>
@@ -78,20 +78,20 @@ export default function AuditPage() {
               <tbody className="divide-y divide-neutral-100">
                 {rows.map((r) => (
                   <tr key={r.id} className="hover:bg-neutral-50">
-                    <td className="px-5 py-3 text-xs text-neutral-400">
+                    <td data-label="When" className="px-5 py-3 text-xs text-neutral-400">
                       {new Date(r.created_at).toLocaleString()}
                     </td>
-                    <td className="px-5 py-3">
+                    <td data-label="Action" className="px-5 py-3">
                       <Badge tone={statusTone(String(r.action.includes("delete") ? "DELETED" : r.action.includes("approve") ? "APPROVED" : "GENERATED"))}>
                         {r.action}
                       </Badge>
                     </td>
-                    <td className="px-5 py-3 text-neutral-500">
+                    <td data-label="Entity" className="px-5 py-3 text-neutral-500">
                       {r.entity_type || "—"}
                       {r.entity_id ? <div className="text-[10px] text-neutral-400">{r.entity_id.slice(0, 12)}</div> : null}
                     </td>
-                    <td className="px-5 py-3 text-neutral-500">{r.user_id ? r.user_id.slice(0, 8) : "system"}</td>
-                    <td className="max-w-[300px] truncate px-5 py-3 text-xs text-neutral-500">
+                    <td data-label="User" className="px-5 py-3 text-neutral-500">{r.user_id ? r.user_id.slice(0, 8) : "system"}</td>
+                    <td data-label="Details" className="max-w-[300px] truncate px-5 py-3 text-xs text-neutral-500">
                       {JSON.stringify(r.new_value ?? r.metadata ?? {})}
                     </td>
                   </tr>

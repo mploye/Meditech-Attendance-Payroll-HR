@@ -15,9 +15,9 @@ export default function HolidaysPage() {
       ]}
       renderRow={(item) => (
         <>
-          <td className="px-5 py-3 font-medium text-neutral-800">{String(item.name)}</td>
-          <td className="px-5 py-3 text-neutral-500">{String(String(item.holiday_date || item.date || "").slice(0, 10))}</td>
-          <td className="px-5 py-3 text-neutral-500">{String(item.type || "—")}</td>
+          <td data-label="Name" className="px-5 py-3 font-medium text-neutral-800">{String(item.name)}</td>
+          <td data-label="Date" className="px-5 py-3 text-neutral-500">{String(String(item.holiday_date || item.date || "").slice(0, 10))}</td>
+          <td data-label="Type" className="px-5 py-3 text-neutral-500">{String(item.type || "—")}</td>
         </>
       )}
     />

@@ -132,14 +132,14 @@ export default function OvertimePage() {
             value={status}
             onChange={setStatus}
             options={["PENDING", "APPROVED", "REJECTED"].map((v) => ({ value: v, label: v }))}
-            className="w-44"
+            className="w-full sm:w-44"
           />
         </div>
         {rows.length === 0 ? (
           <Empty />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="mobile-stack w-full text-left text-sm">
               <thead className="border-b border-neutral-100 text-xs uppercase text-neutral-400">
                 <tr>
                   <th className="px-5 py-3 font-medium">Employee</th>
@@ -153,16 +153,16 @@ export default function OvertimePage() {
               <tbody className="divide-y divide-neutral-100">
                 {rows.map((r) => (
                   <tr key={r.id} className="hover:bg-neutral-50">
-                    <td className="px-5 py-3 font-medium text-neutral-800">{empName(r.employee_id)}</td>
-                    <td className="px-5 py-3 text-neutral-500">{r.date.slice(0, 10)}</td>
-                    <td className="px-5 py-3 text-neutral-500">{r.minutes}</td>
-                    <td className="px-5 py-3 text-neutral-500">
+                    <td data-label="Employee" className="px-5 py-3 font-medium text-neutral-800">{empName(r.employee_id)}</td>
+                    <td data-label="Date" className="px-5 py-3 text-neutral-500">{r.date.slice(0, 10)}</td>
+                    <td data-label="Minutes" className="px-5 py-3 text-neutral-500">{r.minutes}</td>
+                    <td data-label="Est. Pay" className="px-5 py-3 text-neutral-500">
                       {r.overtime_pay != null ? `₹${Number(r.overtime_pay).toLocaleString("en-IN")}` : "—"}
                     </td>
-                    <td className="px-5 py-3">
+                    <td data-label="Status" className="px-5 py-3">
                       <Badge tone={statusTone(r.status)}>{r.status}</Badge>
                     </td>
-                    <td className="px-5 py-3 text-right">
+                    <td className="actions px-5 py-3 text-right">
                       {r.status === "PENDING" && (
                         <div className="flex justify-end gap-2">
                           <Button variant="secondary" onClick={() => decide(r.id, "approve")} disabled={busy}>Approve</Button>

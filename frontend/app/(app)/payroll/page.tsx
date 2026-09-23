@@ -176,7 +176,7 @@ export default function PayrollPage() {
                 <Empty text="No records yet — run Calculate" />
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
+                  <table className="mobile-stack w-full text-left text-sm">
                     <thead className="border-b border-neutral-100 text-xs uppercase text-neutral-400">
                       <tr>
                         <th className="px-5 py-3 font-medium">Employee</th>
@@ -188,13 +188,13 @@ export default function PayrollPage() {
                     <tbody className="divide-y divide-neutral-100">
                       {records.map((r) => (
                         <tr key={r.id} className="hover:bg-neutral-50">
-                          <td className="px-5 py-3">
+                          <td data-label="Employee" className="px-5 py-3">
                             <div className="font-medium text-neutral-800">{r.employee_name || r.employee_code}</div>
                             {r.employee_code ? <div className="text-xs text-neutral-400">{r.employee_code}</div> : null}
                           </td>
-                          <td className="px-5 py-3 text-neutral-500">₹{Number(r.gross_salary || 0).toLocaleString("en-IN")}</td>
-                          <td className="px-5 py-3 text-neutral-500">₹{Number(r.total_deductions || 0).toLocaleString("en-IN")}</td>
-                          <td className="px-5 py-3 font-medium text-neutral-800">₹{Number(r.net_salary || 0).toLocaleString("en-IN")}</td>
+                          <td data-label="Gross" className="px-5 py-3 text-neutral-500">₹{Number(r.gross_salary || 0).toLocaleString("en-IN")}</td>
+                          <td data-label="Deductions" className="px-5 py-3 text-neutral-500">₹{Number(r.total_deductions || 0).toLocaleString("en-IN")}</td>
+                          <td data-label="Net" className="px-5 py-3 font-medium text-neutral-800">₹{Number(r.net_salary || 0).toLocaleString("en-IN")}</td>
                         </tr>
                       ))}
                     </tbody>

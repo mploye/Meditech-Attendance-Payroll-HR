@@ -7,12 +7,14 @@ import { Alert, Button, Input } from "@/components/ui";
 
 function BrandMark() {
   return (
-    <svg width="40" height="40" viewBox="0 0 34 34" fill="none" aria-hidden>
-      <rect width="34" height="34" rx="9" fill="#ffffff" />
-      <path d="M7 23 L17 8 L27 23 Z" fill="#437244" />
-      <circle cx="17" cy="21" r="6" fill="#c9d9ca" />
-      <rect x="14" y="18" width="6" height="6" rx="1" fill="#437244" />
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/genetics-logo.webp"
+      width={80}
+      height={62}
+      alt="Genetics Meditech"
+      className="h-10 w-auto rounded-xl"
+    />
   );
 }
 
@@ -101,7 +103,7 @@ export default function LoginPage() {
               <div className="text-xs text-neutral-500">Attendance · Payroll · HR</div>
             </div>
           </div>
-          <div className="animate-fade-up rounded-2xl border border-brand-100 bg-white p-8 shadow-sm" style={{ animationDelay: "150ms" }}>
+          <div className="animate-fade-up rounded-2xl border border-brand-100 bg-white p-6 shadow-sm sm:p-8" style={{ animationDelay: "150ms" }}>
             <div className="mb-6">
               <h1 className="text-xl font-bold text-brand-900">Sign in</h1>
               <p className="mt-1 text-sm text-neutral-500">Welcome back, please enter your details.</p>

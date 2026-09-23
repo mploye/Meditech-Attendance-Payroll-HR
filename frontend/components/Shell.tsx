@@ -62,12 +62,14 @@ function isActive(pathname: string, href: string) {
 
 function BrandMark() {
   return (
-    <svg width="34" height="34" viewBox="0 0 34 34" fill="none" aria-hidden>
-      <rect width="34" height="34" rx="9" fill="#437244" />
-      <path d="M8 22 L17 9 L26 22 Z" fill="#c9d9ca" />
-      <circle cx="17" cy="21" r="5" fill="#ffffff" fillOpacity="0.9" />
-      <rect x="14" y="18" width="6" height="6" rx="1" fill="#437244" />
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/genetics-logo.webp"
+      width={64}
+      height={50}
+      alt="Genetics Meditech"
+      className="h-8 w-auto rounded-lg"
+    />
   );
 }
 
@@ -156,13 +158,27 @@ export default function Shell({ children }: { children: ReactNode }) {
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
           <aside className="absolute inset-y-0 left-0 w-64">{sidebar}</aside>
+          <button
+            onClick={() => setOpen(false)}
+            aria-label="Close menu"
+            className="absolute right-4 top-4 rounded-lg bg-white/90 px-2.5 py-1.5 text-sm font-medium text-neutral-700 shadow-sm"
+          >
+            ✕
+          </button>
         </div>
       )}
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-brand-100 bg-white/90 px-5 backdrop-blur lg:hidden">
-          <button onClick={() => setOpen(true)} className="text-sm font-semibold text-neutral-700">
-            ☰ Menu
+        <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-brand-100 bg-white/90 px-4 backdrop-blur lg:hidden">
+          <button
+            onClick={() => setOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-semibold text-neutral-700 hover:bg-brand-50"
+            aria-label="Open menu"
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
+              <path d="M2 4.5h14M2 9h14M2 13.5h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+            Menu
           </button>
           <div className="flex items-center gap-2">
             <BrandMark />

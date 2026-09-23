@@ -71,3 +71,66 @@ body {
     animation: none !important;
   }
 }
+
+@media (max-width: 767px) {
+  .mobile-stack {
+    display: block;
+  }
+  .mobile-stack thead {
+    display: none;
+  }
+  .mobile-stack tbody {
+    display: block;
+  }
+  .mobile-stack tbody.divide-y tr + tr {
+    border-top: 0;
+  }
+  .mobile-stack tbody tr {
+    display: block;
+    margin-bottom: 10px;
+    border: 1px solid #e4ece2;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(31, 42, 34, 0.05);
+    padding: 8px 14px;
+  }
+  .mobile-stack tbody td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 0 !important;
+    border: 0;
+    max-width: none !important;
+    overflow: visible !important;
+    white-space: normal;
+    text-overflow: clip;
+  }
+  .mobile-stack tbody td + td {
+    border-top: 1px dashed #eef3ec;
+  }
+  .mobile-stack tbody td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #9aa7a0;
+  }
+  .mobile-stack tbody td.actions {
+    justify-content: flex-end;
+    border-top: 1px solid #e4ece2;
+    margin-top: 6px;
+    padding-top: 10px !important;
+  }
+  .mobile-stack tbody td.actions::before {
+    display: none;
+  }
+  .mobile-stack tbody td.actions > div {
+    width: 100%;
+  }
+  .mobile-stack tbody td.actions button {
+    flex: 1;
+  }
+}

@@ -148,13 +148,13 @@ export default function LeavesPage() {
 
       <Card>
         <div className="border-b border-neutral-100 px-5 py-3">
-          <Select value={status} onChange={setStatus} options={STATUSES.map((v) => ({ value: v, label: v }))} className="w-44" />
+          <Select value={status} onChange={setStatus} options={STATUSES.map((v) => ({ value: v, label: v }))} className="w-full sm:w-44" />
         </div>
         {rows.length === 0 ? (
           <Empty />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="mobile-stack w-full text-left text-sm">
               <thead className="border-b border-neutral-100 text-xs uppercase text-neutral-400">
                 <tr>
                   <th className="px-5 py-3 font-medium">Employee</th>
@@ -169,18 +169,18 @@ export default function LeavesPage() {
               <tbody className="divide-y divide-neutral-100">
                 {rows.map((r) => (
                   <tr key={r.id} className="hover:bg-neutral-50">
-                    <td className="px-5 py-3 font-medium text-neutral-800">{setName(r.employee_id)}</td>
-                    <td className="px-5 py-3 text-neutral-500">{typeName(r.leave_type_id)}</td>
-                    <td className="px-5 py-3 text-neutral-500">
+                    <td data-label="Employee" className="px-5 py-3 font-medium text-neutral-800">{setName(r.employee_id)}</td>
+                    <td data-label="Type" className="px-5 py-3 text-neutral-500">{typeName(r.leave_type_id)}</td>
+                    <td data-label="Dates" className="px-5 py-3 text-neutral-500">
                       {r.start_date.slice(0, 10)} → {r.end_date.slice(0, 10)}
                       {r.is_half_day ? <Badge tone="amber" >½ day</Badge> : null}
                     </td>
-                    <td className="px-5 py-3 text-neutral-500">{r.days}</td>
-                    <td className="px-5 py-3">
+                    <td data-label="Days" className="px-5 py-3 text-neutral-500">{r.days}</td>
+                    <td data-label="Status" className="px-5 py-3">
                       <Badge tone={statusTone(r.status)}>{r.status}</Badge>
                     </td>
-                    <td className="max-w-[220px] truncate px-5 py-3 text-neutral-500">{r.reason || "—"}</td>
-                    <td className="px-5 py-3 text-right">
+                    <td data-label="Reason" className="max-w-[220px] truncate px-5 py-3 text-neutral-500">{r.reason || "—"}</td>
+                    <td className="actions px-5 py-3 text-right">
                       {r.status === "PENDING" && (
                         <div className="flex justify-end gap-2">
                           <Button variant="secondary" onClick={() => decide(r.id, "approve")} disabled={busy}>

@@ -142,7 +142,7 @@ export default function UsersPage() {
           <Empty />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="mobile-stack w-full text-left text-sm">
               <thead className="border-b border-neutral-100 text-xs uppercase text-neutral-400">
                 <tr>
                   <th className="px-5 py-3 font-medium">User</th>
@@ -155,16 +155,16 @@ export default function UsersPage() {
               <tbody className="divide-y divide-neutral-100">
                 {rows.map((u) => (
                   <tr key={u.id} className="hover:bg-neutral-50">
-                    <td className="px-5 py-3">
+                    <td data-label="User" className="px-5 py-3">
                       <div className="font-medium text-neutral-800">{u.full_name}</div>
                       <div className="text-xs text-neutral-400">{u.email}</div>
                     </td>
-                    <td className="px-5 py-3"><Badge tone="violet">{u.role}</Badge></td>
-                    <td className="px-5 py-3 text-neutral-500">
+                    <td data-label="Role" className="px-5 py-3"><Badge tone="violet">{u.role}</Badge></td>
+                    <td data-label="Department" className="px-5 py-3 text-neutral-500">
                       {departments.find((d) => d.id === u.department_id)?.name || "—"}
                     </td>
-                    <td className="px-5 py-3"><Badge tone={u.is_active ? "green" : "red"}>{u.is_active ? "ACTIVE" : "DISABLED"}</Badge></td>
-                    <td className="px-5 py-3 text-right">
+                    <td data-label="Status" className="px-5 py-3"><Badge tone={u.is_active ? "green" : "red"}>{u.is_active ? "ACTIVE" : "DISABLED"}</Badge></td>
+                    <td className="actions px-5 py-3 text-right">
                       <Button
                         variant={u.is_active ? "secondary" : "danger"}
                         onClick={() => toggle(u.id, !u.is_active)}

@@ -110,7 +110,7 @@ export default function ShiftsPage() {
           <Empty />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="mobile-stack w-full text-left text-sm">
               <thead className="border-b border-neutral-100 text-xs uppercase text-neutral-400">
                 <tr>
                   <th className="px-5 py-3 font-medium">Name</th>
@@ -124,16 +124,16 @@ export default function ShiftsPage() {
               <tbody className="divide-y divide-neutral-100">
                 {items.map((s) => (
                   <tr key={s.id} className="hover:bg-neutral-50">
-                    <td className="px-5 py-3 font-medium text-neutral-800">
+                    <td data-label="Name" className="px-5 py-3 font-medium text-neutral-800">
                       {s.name} {s.code ? <span className="text-neutral-400">({s.code})</span> : null}
                     </td>
-                    <td className="px-5 py-3 text-neutral-500">
+                    <td data-label="Hours" className="px-5 py-3 text-neutral-500">
                       {s.start_time || "—"} – {s.end_time || "—"}
                     </td>
-                    <td className="px-5 py-3 text-neutral-500">{s.grace_period_minutes}</td>
-                    <td className="px-5 py-3 text-neutral-500">{s.minimum_work_minutes}</td>
-                    <td className="px-5 py-3 text-neutral-500">{s.overtime_enabled ? "Yes" : "No"}</td>
-                    <td className="px-5 py-3">
+                    <td data-label="Grace" className="px-5 py-3 text-neutral-500">{s.grace_period_minutes}</td>
+                    <td data-label="Min work" className="px-5 py-3 text-neutral-500">{s.minimum_work_minutes}</td>
+                    <td data-label="OT" className="px-5 py-3 text-neutral-500">{s.overtime_enabled ? "Yes" : "No"}</td>
+                    <td data-label="Flags" className="px-5 py-3">
                       {s.is_default ? <Badge tone="blue">Default</Badge> : null}
                       {!s.active ? <Badge tone="red">Inactive</Badge> : null}
                     </td>

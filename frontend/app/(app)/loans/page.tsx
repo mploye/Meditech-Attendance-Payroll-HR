@@ -140,7 +140,7 @@ export default function LoansPage() {
           <Empty />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="mobile-stack w-full text-left text-sm">
               <thead className="border-b border-neutral-100 text-xs uppercase text-neutral-400">
                 <tr>
                   <th className="px-5 py-3 font-medium">Employee</th>
@@ -155,22 +155,22 @@ export default function LoansPage() {
               <tbody className="divide-y divide-neutral-100">
                 {rows.map((l) => (
                   <tr key={l.id} className="hover:bg-neutral-50">
-                    <td className="px-5 py-3">
+                    <td data-label="Employee" className="px-5 py-3">
                       <div className="font-medium text-neutral-800">{l.employee_name || l.employee_id.slice(0, 8)}</div>
                       {l.employee_code ? <div className="text-xs text-neutral-400">{l.employee_code}</div> : null}
                     </td>
-                    <td className="px-5 py-3 text-neutral-500">₹{Number(l.loan_amount).toLocaleString("en-IN")}</td>
-                    <td className="px-5 py-3 text-neutral-500">
+                    <td data-label="Amount" className="px-5 py-3 text-neutral-500">₹{Number(l.loan_amount).toLocaleString("en-IN")}</td>
+                    <td data-label="Installment" className="px-5 py-3 text-neutral-500">
                       ₹{Number(l.installment_amount).toLocaleString("en-IN")} × {l.number_of_installments}
                     </td>
-                    <td className="px-5 py-3 text-neutral-500">{(l.start_date || "—").slice(0, 10)}</td>
-                    <td className="px-5 py-3 text-neutral-500">
+                    <td data-label="Start" className="px-5 py-3 text-neutral-500">{(l.start_date || "—").slice(0, 10)}</td>
+                    <td data-label="Outstanding" className="px-5 py-3 text-neutral-500">
                       {l.outstanding_amount != null ? `₹${Number(l.outstanding_amount).toLocaleString("en-IN")}` : "—"}
                     </td>
-                    <td className="px-5 py-3">
+                    <td data-label="Status" className="px-5 py-3">
                       <Badge tone={statusTone(l.status)}>{l.status}</Badge>
                     </td>
-                    <td className="px-5 py-3 text-right">
+                    <td className="actions px-5 py-3 text-right">
                       {l.status === "ACTIVE" && (
                         <Button variant="secondary" onClick={() => pay(l.id)} disabled={busy}>
                           Pay installment

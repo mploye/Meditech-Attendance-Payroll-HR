@@ -2,6 +2,7 @@ from typing import Optional
 
 from fastapi import Depends, Header, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core.config import settings
@@ -32,6 +33,10 @@ def get_current_user(
     user = db.get(User, subject)
     if not user or not user.is_active:
         raise UnauthorizedError("User not found or inactive")
+    if user.role == Role.SUPER_ADMIN and user.company_id is None:
+        default = db.scalar(select(Company.id).order_by(Company.created_at.asc()).limit(1))
+        if default is not None:
+            user.default_company_id = str(default)
     return user
 
 

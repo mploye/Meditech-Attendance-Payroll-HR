@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, getStoredUser } from "@/lib/api";
 import { Alert, Card, PageHeader, Empty } from "@/components/ui";
 
 type Summary = {
@@ -32,10 +32,19 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [trend, setTrend] = useState<{ date: string; present: number }[]>([]);
   const [error, setError] = useState("");
+  const [noCompany, setNoCompany] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
+        const me = getStoredUser();
+        if (me?.role === "SUPER_ADMIN") {
+          const companies = await api.get<{ id: string }[]>("/api/v1/companies");
+          if (!companies.length) {
+            setNoCompany(true);
+            return;
+          }
+        }
         setSummary(await api.get<Summary>("/api/v1/dashboard/summary"));
         setTrend(await api.get("/api/v1/dashboard/attendance-trend", { days: 14 }));
       } catch (err) {
@@ -45,6 +54,22 @@ export default function DashboardPage() {
   }, []);
 
   const max = Math.max(1, ...trend.map((t) => t.present));
+
+  if (noCompany) {
+    return (
+      <div>
+        <PageHeader title="Dashboard" subtitle="Company overview for today" />
+        <Alert kind="error" message={error} />
+        <Card className="px-5 py-12 text-center">
+          <p className="text-sm font-semibold text-neutral-800">No company set up yet</p>
+          <p className="mx-auto mt-2 max-w-md text-sm text-neutral-500">
+            Your workspace has no company. Create one from the Settings page to start managing
+            employees, attendance, and payroll.
+          </p>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div>

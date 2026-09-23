@@ -18,6 +18,9 @@ def resolve_company_id(user: User, company_id: Optional[str] = None) -> str:
     if user.role == Role.SUPER_ADMIN:
         if company_id:
             return str(company_id)
+        default = getattr(user, "default_company_id", None)
+        if default:
+            return str(default)
         raise PermissionDeniedError("company_id is required for SUPER_ADMIN")
     if not user.company_id:
         raise PermissionDeniedError("User is not associated with a company")

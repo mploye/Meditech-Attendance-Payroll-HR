@@ -49,13 +49,15 @@ export default function LoginPage() {
           </defs>
           <rect width="100%" height="100%" fill="url(#login-grid)" />
         </svg>
-        <div className="absolute -top-24 -right-24 h-96 w-96 rotate-45 rounded-[2.5rem] bg-brand-600/25" />
-        <div className="absolute bottom-10 -left-16 h-64 w-64 rounded-full border-[24px] border-brand-600/20" />
-        <div className="absolute right-16 bottom-24 h-20 w-20 rotate-45 rounded-xl bg-brand-200/15" />
+        <div className="animate-float absolute -top-24 -right-24 h-96 w-96 rotate-45 rounded-[2.5rem] bg-brand-600/25" style={{ animationDuration: "18s" }} />
+        <div className="animate-float absolute bottom-10 -left-16 h-64 w-64 rounded-full border-[24px] border-brand-600/20" style={{ animationDuration: "26s" }} />
+        <div className="animate-float absolute right-16 bottom-24 h-20 w-20 rotate-45 rounded-xl bg-brand-200/15" style={{ animationDuration: "12s", animationDelay: "0.6s" }} />
 
         <div className="relative flex h-full flex-col justify-between p-12">
-          <div className="flex items-center gap-3">
-            <BrandMark />
+          <div className="animate-fade-up flex items-center gap-3">
+            <span className="animate-glow inline-flex rounded-2xl">
+              <BrandMark />
+            </span>
             <div>
               <div className="text-lg font-bold tracking-wide text-white">Genetics Meditech</div>
               <div className="text-xs text-brand-300">Attendance · Payroll · HR</div>
@@ -63,14 +65,14 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <h1 className="max-w-md text-3xl font-bold leading-tight text-white">
+            <h1 className="animate-fade-up max-w-md text-3xl font-bold leading-tight text-white" style={{ animationDelay: "150ms" }}>
               Manage your workforce from a single, secure platform
             </h1>
-            <p className="mt-4 max-w-md text-sm leading-relaxed text-brand-300">
+            <p className="animate-fade-up mt-4 max-w-md text-sm leading-relaxed text-brand-300" style={{ animationDelay: "280ms" }}>
               Attendance, leaves, payroll and eSSL device integration — powered by a clean, modern
               interface your team will love.
             </p>
-            <ul className="mt-8 space-y-3 text-sm text-brand-100">
+            <ul className="animate-fade-up mt-8 space-y-3 text-sm text-brand-100" style={{ animationDelay: "420ms" }}>
               {["Live attendance & shift tracking", "One-click payroll runs and payslips", "Real-time reports and audit trails"].map(
                 (f) => (
                   <li key={f} className="flex items-center gap-3">
@@ -92,14 +94,14 @@ export default function LoginPage() {
 
       <div className="flex flex-1 items-center justify-center px-4 py-10">
         <div className="w-full max-w-md">
-          <div className="mb-6 flex items-center gap-3 lg:hidden">
+          <div className="animate-fade-up mb-6 flex items-center gap-3 lg:hidden">
             <BrandMark />
             <div>
               <div className="text-lg font-bold text-brand-900">Genetics Meditech</div>
               <div className="text-xs text-neutral-500">Attendance · Payroll · HR</div>
             </div>
           </div>
-          <div className="rounded-2xl border border-brand-100 bg-white p-8 shadow-sm">
+          <div className="animate-fade-up rounded-2xl border border-brand-100 bg-white p-8 shadow-sm" style={{ animationDelay: "150ms" }}>
             <div className="mb-6">
               <h1 className="text-xl font-bold text-brand-900">Sign in</h1>
               <p className="mt-1 text-sm text-neutral-500">Welcome back, please enter your details.</p>
@@ -109,7 +111,14 @@ export default function LoginPage() {
               <Input label="Email" type="email" value={email} onChange={setEmail} placeholder="admin@company.com" required />
               <Input label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" required />
               <Button type="submit" disabled={busy} className="w-full">
-                {busy ? "Signing in…" : "Sign in"}
+                {busy ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    Signing in…
+                  </span>
+                ) : (
+                  "Sign in"
+                )}
               </Button>
             </form>
           </div>

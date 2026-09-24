@@ -9,7 +9,7 @@ function BrandMark() {
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src="/genetics-logo.webp"
+      src="/genetics-logo.png"
       width={80}
       height={62}
       alt="Genetics Meditech"

@@ -40,12 +40,20 @@ async function request<T>(
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      cache: "no-store",
+    });
+  } catch (err) {
+    throw new Error(
+      "Unable to connect to the API server. The backend service on Render may be waking up from sleep mode. Please wait 10-20 seconds and try signing in again."
+    );
+  }
+
 
   const isFile = opts.raw;
   if (isFile) {

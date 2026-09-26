@@ -1,0 +1,31 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "supabase": {
+      "type": "remote",
+      "url": "https://mcp.supabase.com/mcp?project_ref=qeqpaajshdtqmukvmogz&features=docs%2Caccount%2Cdatabase%2Cdebugging%2Cdevelopment%2Cfunctions%2Cbranching",
+      "headers": {
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFlcXBhYWpzaGR0cW11a3Ztb2d6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODU5NjE4NSwiZXhwIjoyMTA0MTcyMTg1fQ.5u1G_-sIY7TKmuh34bd7c-goQ0dXirEgA5xtL7eH5xM"
+      },
+      "enabled": true
+    },
+    "vercel": {
+      "type": "remote",
+      "url": "https://mcp.vercel.com",
+      "oauth": true,
+      "headers": {
+        "Authorization": "Bearer {env:VERCEL_TOKEN}"
+      },
+      "enabled": true
+    },
+    "render": {
+      "type": "remote",
+      "url": "https://mcp.render.com/mcp",
+      "headers": {
+        "Authorization": "Bearer rnd_Zj7YSnzc9UWUiRcvh00NhbGGZs7t"
+      },
+      "oauth": false,
+      "enabled": true
+    }
+  }
+}

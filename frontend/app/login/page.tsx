@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api, setAuth } from "@/lib/api";
 import { Alert, Button, Input } from "@/components/ui";
@@ -24,6 +24,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    // Silent pre-warm ping to wake Render backend from sleep on page visit
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    fetch(`${baseUrl}/api/v1/health`, { cache: "no-store" }).catch(() => {});
+  }, []);
+
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

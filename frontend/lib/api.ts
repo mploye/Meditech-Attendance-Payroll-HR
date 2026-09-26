@@ -33,26 +33,38 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
-  opts: { raw?: boolean } = {}
+  opts: { raw?: boolean; retries?: number } = {}
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
-  let res: Response;
-  try {
-    res = await fetch(`${BASE}${path}`, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      cache: "no-store",
-    });
-  } catch (err) {
+  const maxRetries = opts.retries ?? 3;
+  let res: Response | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      res = await fetch(`${BASE}${path}`, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        cache: "no-store",
+      });
+      break;
+    } catch {
+      if (attempt < maxRetries - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+    }
+  }
+
+  if (!res) {
     throw new Error(
-      "Unable to connect to the API server. The backend service on Render may be waking up from sleep mode. Please wait 10-20 seconds and try signing in again."
+      "Unable to connect to the API server. Render free tier may be waking up from sleep mode. Please wait 10-15 seconds and try signing in again."
     );
   }
+
 
 
   const isFile = opts.raw;

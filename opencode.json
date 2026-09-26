@@ -13,9 +13,6 @@
       "type": "remote",
       "url": "https://mcp.vercel.com",
       "oauth": true,
-      "headers": {
-        "Authorization": "Bearer {env:VERCEL_TOKEN}"
-      },
       "enabled": true
     },
     "render": {

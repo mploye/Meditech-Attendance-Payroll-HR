@@ -25,6 +25,11 @@
   --animate-float: float 14s ease-in-out infinite;
   --animate-fade-up: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-glow: glow 2.6s ease-in-out infinite;
+  --animate-float-3d: float-3d 16s ease-in-out infinite;
+  --animate-rotate-y: rotate-y 12s linear infinite;
+  --animate-rotate-x: rotate-x 14s linear infinite;
+  --animate-tilt: tilt 7s ease-in-out infinite;
+  --animate-breathe: breathe 5s ease-in-out infinite;
 
   @keyframes float {
     0%,
@@ -33,6 +38,54 @@
     }
     50% {
       transform: translate3d(0, -22px, 0);
+    }
+  }
+
+  @keyframes float-3d {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0) rotateX(8deg) rotateY(-12deg);
+    }
+    50% {
+      transform: translate3d(0, -30px, 60px) rotateX(-8deg) rotateY(12deg);
+    }
+  }
+
+  @keyframes rotate-y {
+    from {
+      transform: rotateX(-14deg) rotateY(0deg);
+    }
+    to {
+      transform: rotateX(-14deg) rotateY(360deg);
+    }
+  }
+
+  @keyframes rotate-x {
+    from {
+      transform: rotateY(18deg) rotateX(0deg);
+    }
+    to {
+      transform: rotateY(18deg) rotateX(360deg);
+    }
+  }
+
+  @keyframes tilt {
+    0%,
+    100% {
+      transform: perspective(900px) rotateX(2deg) rotateY(-2deg);
+    }
+    50% {
+      transform: perspective(900px) rotateX(-3deg) rotateY(3deg);
+    }
+  }
+
+  @keyframes breathe {
+    0%,
+    100% {
+      transform: scale3d(1, 1, 1);
+    }
+    50% {
+      transform: scale3d(1.08, 1.08, 1.08);
     }
   }
 
@@ -58,6 +111,44 @@
   }
 }
 
+/* 3D scene helpers for the login page */
+.scene-3d {
+  perspective: 1200px;
+  transform-style: preserve-3d;
+}
+
+.card-3d {
+  transform-style: preserve-3d;
+  transition: transform 0.35s ease-out;
+  will-change: transform;
+}
+
+.card-3d__glare {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(
+    600px circle at var(--glare-x, 50%) var(--glare-y, 0%),
+    rgba(255, 255, 255, 0.14),
+    transparent 45%
+  );
+  opacity: 0;
+  transition: opacity 0.35s ease-out;
+}
+
+.card-3d:hover .card-3d__glare {
+  opacity: 1;
+}
+
+.sidebar-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse at center, black 45%, transparent 80%);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -67,7 +158,12 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .animate-float,
   .animate-fade-up,
-  .animate-glow {
+  .animate-glow,
+  .animate-float-3d,
+  .animate-rotate-y,
+  .animate-rotate-x,
+  .animate-tilt,
+  .animate-breathe {
     animation: none !important;
   }
 }

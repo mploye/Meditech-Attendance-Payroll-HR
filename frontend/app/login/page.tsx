@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api, setAuth } from "@/lib/api";
 import { Alert, Button, Input } from "@/components/ui";
+import LoginScene from "@/components/LoginScene";
 
 function BrandMark() {
   return (
@@ -15,6 +16,36 @@ function BrandMark() {
       alt="Genetics Meditech"
       className="h-10 w-auto rounded-xl"
     />
+  );
+}
+
+function TiltCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / rect.width;
+    const py = (e.clientY - rect.top) / rect.height;
+    const rx = (0.5 - py) * 10;
+    const ry = (px - 0.5) * 14;
+    el.style.transform = `perspective(900px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg)`;
+    el.style.setProperty("--glare-x", `${(px * 100).toFixed(1)}%`);
+    el.style.setProperty("--glare-y", `${(py * 100).toFixed(1)}%`);
+  };
+
+  const onLeave = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.transform = "";
+  };
+
+  return (
+    <div ref={ref} className={`card-3d ${className}`} onMouseMove={onMove} onMouseLeave={onLeave}>
+      {children}
+      <span className="card-3d__glare" aria-hidden />
+    </div>
   );
 }
 
@@ -50,14 +81,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen bg-background">
       <div className="relative hidden w-1/2 overflow-hidden bg-gradient-to-br from-brand-900 via-brand-900 to-[#14261b] lg:block">
-        <svg className="absolute inset-0 h-full w-full" preserveAspectRatio="none" aria-hidden>
-          <defs>
-            <pattern id="login-grid" width="56" height="56" patternUnits="userSpaceOnUse">
-              <path d="M 56 0 L 0 0 0 56" fill="none" stroke="#ffffff" strokeOpacity="0.06" strokeWidth="1" />
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#login-grid)" />
-        </svg>
+        <LoginScene />
         <div className="animate-float absolute -top-24 -right-24 h-96 w-96 rotate-45 rounded-[2.5rem] bg-brand-600/25" style={{ animationDuration: "18s" }} />
         <div className="animate-float absolute bottom-10 -left-16 h-64 w-64 rounded-full border-[24px] border-brand-600/20" style={{ animationDuration: "26s" }} />
         <div className="animate-float absolute right-16 bottom-24 h-20 w-20 rotate-45 rounded-xl bg-brand-200/15" style={{ animationDuration: "12s", animationDelay: "0.6s" }} />
@@ -110,7 +134,7 @@ export default function LoginPage() {
               <div className="text-xs text-neutral-500">Attendance · Payroll · HR</div>
             </div>
           </div>
-          <div className="animate-fade-up rounded-2xl border border-brand-100 bg-white p-6 shadow-sm sm:p-8" style={{ animationDelay: "150ms" }}>
+          <TiltCard className="animate-fade-up rounded-2xl border border-brand-100 bg-white p-6 shadow-sm sm:p-8" >
             <div className="mb-6">
               <h1 className="text-xl font-bold text-brand-900">Sign in</h1>
               <p className="mt-1 text-sm text-neutral-500">Welcome back, please enter your details.</p>
@@ -130,7 +154,7 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
-          </div>
+          </TiltCard>
           <p className="mt-5 text-[11px] leading-relaxed text-neutral-400">
             Connects to the FastAPI backend at {process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}. First run:
             register the super admin via <code className="text-neutral-500">POST /api/v1/auth/register-super-admin</code>.

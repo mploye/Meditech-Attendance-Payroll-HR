@@ -13,7 +13,7 @@ COPY . .
 # NEXT_PUBLIC_API_URL is baked into the client bundle at build time.
 # For a single-host ingress set it to the same public origin as the UI
 # (e.g. https://hrms.example.com) so API calls stay same-origin.
-ARG NEXT_PUBLIC_API_URL=https://hrms.example.com
+ARG NEXT_PUBLIC_API_URL=https://hrms-api-4trx.onrender.com
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 RUN npm run build

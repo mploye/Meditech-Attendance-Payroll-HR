@@ -2,7 +2,7 @@ import "dotenv/config";
 import { defineConfig, devices } from "@playwright/test";
 
 const baseURL =
-  process.env.E2E_BASE_URL || "https://meditech-attendance-payroll-hr.vercel.app";
+  process.env.E2E_BASE_URL || "https://hrms-ui-7hys.onrender.com";
 
 export default defineConfig({
   testDir: "./tests/e2e",

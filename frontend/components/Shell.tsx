@@ -26,6 +26,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     items: [
       { href: "/attendance", label: "Attendance" },
       { href: "/shifts", label: "Shifts" },
+      { href: "/breaks", label: "Breaks" },
       { href: "/devices", label: "Devices" },
       { href: "/holidays", label: "Holidays" },
     ],

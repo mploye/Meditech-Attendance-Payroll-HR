@@ -12,7 +12,7 @@ from models.overtime import OvertimeRecord
 from models.payroll import PayrollComponent, PayrollPeriod, PayrollRecord
 from models.payslip import Payslip
 from models.salary import EmployeeSalary, SalaryStructure, SalaryStructureComponent, StatutoryRule
-from models.shift import Shift, ShiftAssignment
+from models.shift import BreakLog, Shift, ShiftAssignment, ShiftBreak
 from models.user import User
 
 __all__ = [
@@ -30,6 +30,8 @@ __all__ = [
     "DeviceSyncLog",
     "Shift",
     "ShiftAssignment",
+    "ShiftBreak",
+    "BreakLog",
     "LeaveType",
     "LeaveBalance",
     "LeaveRequest",

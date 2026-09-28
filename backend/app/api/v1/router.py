@@ -4,6 +4,7 @@ from api.v1.endpoints import (
     attendance,
     audit,
     auth,
+    breaks,
     companies,
     dashboard,
     device_sync,
@@ -36,6 +37,7 @@ api_router.include_router(devices.router, prefix="/devices", tags=["Devices"])
 api_router.include_router(integrations_essl.router, prefix="/integrations/essl", tags=["eSSL Integration"])
 api_router.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
 api_router.include_router(shifts.router, prefix="/shifts", tags=["Shifts"])
+api_router.include_router(breaks.router, prefix="/breaks", tags=["Breaks"])
 api_router.include_router(leaves.router, prefix="/leaves", tags=["Leaves"])
 api_router.include_router(holidays.router, prefix="/holidays", tags=["Holidays"])
 api_router.include_router(overtime.router, prefix="/overtime", tags=["Overtime"])

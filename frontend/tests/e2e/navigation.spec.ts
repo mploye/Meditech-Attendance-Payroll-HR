@@ -9,6 +9,7 @@ const ROUTES = [
   ["/users", "/Users/"],
   ["/attendance", "/Attendance/"],
   ["/shifts", "/Shifts/"],
+  ["/breaks", "/Breaks/"],
   ["/devices", "/Devices/"],
   ["/holidays", "/Holidays/"],
   ["/leaves", "/Leave Requests/"],

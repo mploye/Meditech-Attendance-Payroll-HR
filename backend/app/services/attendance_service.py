@@ -12,7 +12,7 @@ from models.employee import Employee
 from models.employee_device import EmployeeDevice
 from models.enums import AttendanceStatus, EventType, LogSource, SyncLogStatus
 from models.shift import Shift
-from services import shift_service
+from services import break_service, shift_service
 
 
 @dataclass
@@ -312,7 +312,7 @@ def process_day(
         )
 
     resolved_start, resolved_end = shift_service.resolve_shift_times(shift, day, tz)
-    break_minutes = int(shift.break_minutes or 0)
+    break_minutes = break_service.day_break_minutes(db, company_id, employee_id, day, shift, tz)
     worked_minutes = (
         int((last_out - first_in).total_seconds() // 60) - break_minutes
         if first_in and last_out

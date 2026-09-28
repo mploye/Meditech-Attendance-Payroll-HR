@@ -62,6 +62,18 @@ class EventType(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
+class BreakType(str, Enum):
+    SCHEDULED = "SCHEDULED"
+    RESTROOM = "RESTROOM"
+
+
+class BreakStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    COMPLETED = "COMPLETED"
+    MISSING_OUT = "MISSING_OUT"
+    CANCELLED = "CANCELLED"
+
+
 class AttendanceStatus(str, Enum):
     PRESENT = "PRESENT"
     ABSENT = "ABSENT"

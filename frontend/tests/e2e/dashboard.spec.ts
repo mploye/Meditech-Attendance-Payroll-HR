@@ -9,6 +9,7 @@ const NAV_LINKS = [
   "/Users/",
   "/Attendance/",
   "/Shifts/",
+  "/Breaks/",
   "/Devices/",
   "/Holidays/",
   "/Leave Requests/",

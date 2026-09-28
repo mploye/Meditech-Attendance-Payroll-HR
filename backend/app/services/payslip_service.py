@@ -290,6 +290,7 @@ def _payslip_elements(source: Payslip, record: PayrollRecord, company: Company) 
                        textColor="#94a3b8", leading=10),
     )
 
+    header = _company_header(company)
     return [
         header, Spacer(1, 3 * mm),
         payslip_banner, Spacer(1, 3 * mm),

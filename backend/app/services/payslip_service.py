@@ -96,6 +96,90 @@ def _employee_display(source: Payslip) -> tuple[str, str, str, str]:
     return emp.employee_code, name, department, designation
 
 
+def _payslip_summary(source: Payslip, record: "PayrollRecord") -> dict[str, object]:
+    """Return plain-data summary used by HTML/JSON/Text builders."""
+    emp_code, emp_name, department, designation = _employee_display(source)
+    period_label = _period_label(source)
+    attendance = source.payroll_record
+    earnings = [c for c in record.components if c.component_type.value == "EARNING"]
+    deductions = [c for c in record.components if c.component_type.value == "DEDUCTION"]
+    return {
+        "employee_code": emp_code,
+        "employee_name": emp_name,
+        "department": department,
+        "designation": designation,
+        "period": period_label,
+        "working_days": attendance.working_days,
+        "present_days": attendance.present_days,
+        "leave_days": attendance.leave_days,
+        "lop_days": attendance.lop_days,
+        "overtime_minutes": attendance.overtime_minutes,
+        "earnings": [{"name": c.name, "amount": round(float(c.amount), 2)} for c in earnings],
+        "deductions": [{"name": c.name, "amount": round(float(c.amount), 2)} for c in deductions],
+        "gross": round(float(source.gross), 2),
+        "total_deductions": round(float(source.total_deductions), 2),
+        "net": round(float(source.net), 2),
+    }
+
+
+def build_payslip_html(db: Session, payslip: Payslip) -> str:
+    """Render the payslip as a self-contained HTML document (AI-readable)."""
+    from models.company import Company
+    record = payslip.payroll_record
+    company = db.get(Company, payslip.company_id)
+    s = _payslip_summary(payslip, record)
+    emp = payslip.employee
+    comp_name = (company.legal_name or company.name) if company else "Company"
+    rows = "".join(f"<tr><td>{e['name']}</td><td>₹{e['amount']:,.2f}</td></tr>" for e in s["earnings"])
+    drows = "".join(f"<tr><td>{e['name']}</td><td>₹{e['amount']:,.2f}</td></tr>" for e in s["deductions"])
+    return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Payslip - {s['employee_code']} - {s['period']}</title><style>body{{font-family:Helvetica,Arial,sans-serif;max-width:800px;margin:24px auto;color:#1f2937}}h1{{font-size:20px;margin:0 0 4px}}.sub{{color:#4b5563;font-size:13px;margin-bottom:16px}}table{{width:100%;border-collapse:collapse;margin:8px 0}}th,td{{padding:6px 8px;border:1px solid #d1d5db;text-align:left}}th{{background:#f3f4f6}}.net{{background:#dcfce7;font-weight:bold}}</style></head><body><h1>{comp_name}</h1><p class="sub">{s['employee_name']} | {s['employee_code']} | {s['department']} — {s['designation']}</p><p class="sub">Period: {s['period']}</p><table><tr><th>Info</th><th>Value</th></tr><tr><td>Working Days</td><td>{s['working_days']}</td></tr><tr><td>Present Days</td><td>{s['present_days']}</td></tr><tr><td>Leave Days</td><td>{s['leave_days']}</td></tr><tr><td>LOP Days</td><td>{s['lop_days']}</td></tr><tr><td>Overtime Minutes</td><td>{s['overtime_minutes']}</td></tr></table><h3>Earnings</h3><table><tr><th>Component</th><th>Amount</th></tr>{rows}</table><h3>Deductions</h3><table><tr><th>Component</th><th>Amount</th></tr>{drows}</table><table><tr class="net"><td>Gross Salary</td><td>₹{s['gross']:,.2f}</td></tr><tr class="net"><td>Total Deductions</td><td>₹{s['total_deductions']:,.2f}</td></tr><tr class="net"><td>Net Pay</td><td>₹{s['net']:,.2f}</td></tr></table><p class="sub" style="margin-top:16px;color:#9ca3af;">Generated {payslip.generated_at.isoformat() if payslip.generated_at else ''}</p></body></html>"""
+
+
+def build_payslip_json(db: Session, payslip: Payslip) -> dict[str, object]:
+    """Return payslip data as a JSON-serializable dict (AI-readable)."""
+    from models.company import Company
+    record = payslip.payroll_record
+    company = db.get(Company, payslip.company_id)
+    s = _payslip_summary(payslip, record)
+    return {
+        "document_type": "payslip",
+        "company": company.name if company else None,
+        "employee": {"code": s["employee_code"], "name": s["employee_name"], "department": s["department"], "designation": s["designation"]},
+        "period": s["period"],
+        "attendance": {"working_days": s["working_days"], "present_days": s["present_days"], "leave_days": s["leave_days"], "lop_days": s["lop_days"], "overtime_minutes": s["overtime_minutes"]},
+        "earnings": s["earnings"],
+        "deductions": s["deductions"],
+        "gross_salary": s["gross"],
+        "total_deductions": s["total_deductions"],
+        "net_pay": s["net"],
+        "generated_at": payslip.generated_at.isoformat() if payslip.generated_at else None,
+        "status": payslip.status.value if payslip.status else None,
+        "payslip_id": str(payslip.id),
+    }
+
+
+def build_payslip_text(payslip: Payslip) -> str:
+    """Return payslip data as plain text (AI-readable)."""
+    s = _payslip_summary(payslip, payslip.payroll_record)
+    lines = [
+        f"PAYSLEET — {s['employee_name']} ({s['employee_code']})",
+        f"Period: {s['period']} | Dept: {s['department']} | Designation: {s['designation']}",
+        "-" * 50, "ATTENDANCE",
+        f"  Working Days : {s['working_days']}", f"  Present Days : {s['present_days']}",
+        f"  Leave Days   : {s['leave_days']}", f"  LOP Days     : {s['lop_days']}",
+        f"  Overtime     : {s['overtime_minutes']} min",
+        "-" * 50, "EARNINGS",
+    ]
+    for e in s["earnings"]:
+        lines.append(f"  {e['name']:<30} ₹{e['amount']:>12,.2f}")
+    lines.append("-" * 50 + "\nDEDUCTIONS")
+    for e in s["deductions"]:
+        lines.append(f"  {e['name']:<30} ₹{e['amount']:>12,.2f}")
+    lines.append("-" * 50)
+    lines.extend([f"  {'GROSS SALARY':<30} ₹{s['gross']:>12,.2f}", f"  {'TOTAL DEDUCTIONS':<30} ₹{s['total_deductions']:>12,.2f}", f"  {'NET PAY':<30} ₹{s['net']:>12,.2f}", "-" * 50, f"Generated: {payslip.generated_at.isoformat() if payslip.generated_at else 'N/A'}", f"Status: {payslip.status.value if payslip.status else 'N/A'}"])
+    return "\n".join(lines)
+
+
 def _payslip_elements(source: Payslip, record: PayrollRecord, company: Company) -> list:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4

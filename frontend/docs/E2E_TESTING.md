@@ -44,7 +44,7 @@ Playwright auto-loads `.env`. Credential-based tests auto-skip when either varia
 - PASSED 56/56 on production (`npm run test:e2e`, 6 workers).
 - Skipped: credential + double-login subtests (no `E2E_PASSWORD` set).
 - HTML report: `frontend/playwright-report/index.html`.
-- See `frontend/E2E_TEST_REPORT.md`.
+- See `frontend/docs/E2E_TEST_REPORT.md`.
 
 ### Re-verification (2026-09-23)
 - Same-day re-run of the baseline suite, unchanged config (`frontend/playwright.config.ts`) and unchanged specs (`tests/e2e/`).

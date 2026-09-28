@@ -1,37 +1,71 @@
 # Genetics Meditech — Attendance · Payroll · HR
 
-HR + Attendance + Payroll management SaaS with official **eSSL eTimeTrackLite** and **AI-FACE-ORCUS** device integration.
+HR + Attendance + Payroll management SaaS backed by official **eSSL eTimeTrackLite**
+and **AI-FACE-ORCUS** device integrations.
 
-- **Backend** — FastAPI (`backend/`), 31 tables, RBAC, audit trail, eSSL sync (mock mode), reports & payslips.
-- **Frontend** — Next.js 16 + Tailwind v4 (`frontend/`), 19 routes covering employees, attendance, leaves, overtime, loans, payroll, payslips, reports, settings, users and audit.
-- **Database** — SQLAlchemy 2.0 models with Alembic migrations; SQLite default, Postgres/Supabase supported.
+- **Backend** — FastAPI (`backend/`), 31 tables, RBAC, audit trail, eSSL sync
+  (mock-first), payroll engine, reports and PDF payslips.
+- **Frontend** — Next.js 16 + Tailwind v4 + TypeScript (`frontend/`), 16 app pages
+  (employees, attendance, shifts, devices, leaves, overtime, loans, payroll,
+  payslips, reports, users, audit, settings, …) plus 3D animated login.
+- **Database** — SQLAlchemy 2.0 + Alembic; SQLite for local dev, Postgres for
+  production (Render/Supabase supported).
+- **Deployment** — Render (API), Vercel (UI), optional Docker Compose / Kubernetes
+  runbooks in `docs/DEPLOY.md`.
 
-## Repo layout
+---
+
+## 1. Repo layout
 
 ```
 backend/
   app/
-    api/v1/          # FastAPI routers (auth, companies, employees, attendance, payroll, …)
-    core/            # config, database, rbac, errors, migrations
-    models/          # 31 SQLAlchemy models
-    services/        # business logic (attendance, leave, payroll, loan, eSSL…)
-    tasks/           # background scheduler
-  alembic/           # migration scripts (env.py binds to app metadata)
-  scripts/smoke_api.py
-  tests/             # pytest suite (API + service level)
+    main.py               # FastAPI entrypoint (app.main:app)
+    api/
+      v1/router.py        # registers all routes under /api/v1
+      v1/endpoints/       # 20 route modules (auth, employees, payroll, …)
+      deps.py             # shared dependencies (auth, tenant scope, RBAC)
+    core/                 # config, database, security, rbac, errors, audit, timezone
+    models/               # SQLAlchemy models
+    services/             # business logic (attendance, leave, payroll, loan, eSSL…)
+    payroll/              # payroll/statutory/LOP calculation domain layer
+    integrations/essl/    # eSSL eTimeTrackLite client, protocol, mock, pull device
+    tasks/                # APScheduler background jobs (attendance, device sync)
+    static/               # static assets (company logo for payslips)
+  connector/              # standalone device-sync worker (optional, runs separately)
+  tests/                  # pytest suite (API + services)
+  scripts/                # seed/smoke scripts (smoke_api.py, init_db.py, …)
+  alembic/                # migrations (alembic.ini at backend root)
+
 frontend/
-  app/               # Next.js App Router pages
-  components/        # Shell, CRUD primitives, UI kit
-  lib/api.ts         # typed HTTP client + download helper
-docs/                # API contract and database design
+  app/                    # Next.js App Router pages (routes live here)
+    login/page.tsx        # login page (3D scene)
+    (app)/                # authenticated section: layout + 16 pages
+  components/
+    ui/index.tsx          # UI primitives kit (Button, Card, Input, …)
+    Shell.tsx             # app shell / sidebar navigation
+    CrudPage.tsx          # reusable list+form page for simple entities
+    LoginScene.tsx        # 3D login animation
+  lib/api.ts              # typed API client, auth storage, file download
+  public/                 # static assets (logo)
+  tests/e2e/              # Playwright E2E specs
+  docs/                   # E2E testing guide + report
+
+docs/                     # API contract, DB design, deployment runbook
+deploy/                   # Docker Compose, Kubernetes, bootstrap/backup scripts
 ```
 
-## Prerequisites
+---
 
-- Python 3.13+ and Node 22+
-- Windows PowerShell / Linux shell
+## 2. Prerequisites
 
-## Backend
+- Python **3.13+**
+- Node.js **22+** and npm
+- Windows PowerShell / macOS / Linux shell
+
+---
+
+## 3. Backend (FastAPI)
 
 ```bash
 cd backend
@@ -39,69 +73,118 @@ python -m venv .venv
 .\.venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 
-# set PYTHONPATH so `services`, `core`, `models` importable (package root is backend/app)
-$env:PYTHONPATH = "$PWD\app"      # macOS/Linux: export PYTHONPATH="$PWD/app"
+# Configuration
+cp .env.example .env              # then edit backend/.env (SQLite is fine for dev)
 
-python -m uvicorn main:app --host 127.0.0.1 --port 8000
+# Run the API (port 8000). PYTHONPATH must include backend/app so the
+# package-relative imports (`core`, `services`, ...) resolve.
+$env:PYTHONPATH = "$PWD\app"      # macOS/Linux: export PYTHONPATH="$PWD/app"
+python -m uvicorn main:app --reload --port 8000
 ```
 
-On startup the app applies schema via Alembic (`alembic upgrade head`); pre-existing
-`create_all` databases and missing-alembic setups fall back to `metadata.create_all`.
+On startup the app creates/upgrades the schema (`core/migrations.run_migrations`)
+and starts the APScheduler. Health check: `http://127.0.0.1:8000/api/v1/health`.
 
-Configuration lives in `backend/.env.example` (copy to `backend/.env`). Use
-`ESSL_MOCK_MODE=true` for device mocks; real eSSL credentials are never committed.
+### Backend environment variables (`backend/.env`)
 
-### Seed / smoke test
+| Variable | Purpose | Default (dev) |
+| --- | --- | --- |
+| `DATABASE_URL` | SQLAlchemy URL | `sqlite:///./hrms.db` |
+| `JWT_SECRET` | Token signing secret | `change-me-in-production` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Token lifetime | `1440` |
+| `CORS_ORIGINS` | Allowed UI origins | `http://localhost:3000,http://localhost:3001` |
+| `ESSL_MOCK_MODE` | Mock eSSL instead of real portal | `true` |
+| `DEVICE_CONNECTOR_API_KEY` | Auth key for connector | `change-me-connector-key` |
+| `SUPABASE_URL/_ANON_KEY/_SERVICE_ROLE_KEY` | Optional Supabase sync | — |
+
+### Seed / smoke check
 
 ```bash
 cd backend
-$env:PYTHONPATH = "$PWD\app"
-python scripts/smoke_api.py      # 44 end-to-end checks (creates smoke demo data)
+$env:PYTHONPATH = "$PWD\app"          # same as the server run above
+python scripts/smoke_api.py           # runs end-to-end API checks + demo company data
 ```
 
 ### Tests
 
 ```bash
 cd backend
-$env:PYTHONPATH = "$PWD\app"
-python -m pytest                  # 23 tests (API flows + services), uses test_hrms.db
+$env:PYTHONPATH = "$PWD\app"      # macOS/Linux: export PYTHONPATH="$PWD/app"
+python -m pytest                  # 40 tests (API flows + services)
 ```
 
-### Migrations
+### Migrations (Alembic)
 
 ```bash
 cd backend
-$env:PYTHONPATH = "$PWD\app"
-python -m alembic upgrade head          # apply
-python -m alembic revision --autogenerate -m "describe change"   # new migration
+python -m alembic upgrade head                                                # apply
+python -m alembic revision --autogenerate -m "describe change"                # new
 ```
 
-## Frontend
+> The app also auto-creates tables at startup via `create_all`, so a bare SQLite
+> DB works without running Alembic first.
+
+---
+
+## 4. Frontend (Next.js)
 
 ```bash
 cd frontend
 npm install
-npm run dev          # http://localhost:3000
-# or production: npm run build && npm start -- -p 3000
+npm run dev            # http://localhost:3000
+# Production preview:
+npm run build && npm start -- -p 3000
 ```
 
-`NEXT_PUBLIC_API_URL` (default `http://localhost:8000`) points the UI at the API.
+`NEXT_PUBLIC_API_URL` (default `http://localhost:8000`) tells the UI where the API
+lives. Put a value like `https://hrms-api.example.com` in `frontend/.env` for a
+non-local API. CORS on the backend must allow the UI origin.
 
-Default UI login after seeding: `hr@smoke.com` / `Hr123456` (company admin).
+### Signing in locally
 
-## API
+After running `scripts/smoke_api.py`, use the seeded company admin:
 
-Interactive docs at `http://127.0.0.1:8000/api/docs`; concise contract in `docs/api.md`.
+- **`hr@smoke.com` / `Hr123456`** (company admin)
 
-Responses use an envelope: success `{"success": true, "data": …}`, error
-`{"error": {"code", "message"}}`.
+In production the first user registers as Super Admin, then creates the company and
+its admin.
 
-## Key conventions
+### Lint / E2E tests
 
-- Multi-tenant by `company_id`, enforced server-side via `core/rbac.py`
-  (`ensure_perm`, `resolve_company_id`).
-- eSSL integration is mock-driven (`ESSL_MOCK_MODE`) — only documented device
-  endpoints are called; raw credentials are filtered from API responses.
-- Payroll period lifecycle: `DRAFT → CALCULATING → REVIEW → APPROVED → LOCKED`.
-- UI routes are static client components (Next 16 — see `frontend/AGENTS.md` for
-  the breaking-changes notes used while building).
+```bash
+cd frontend
+npm run lint
+npm run test:e2e                  # Playwright — see frontend/docs/E2E_TESTING.md
+```
+
+---
+
+## 5. API
+
+- Interactive docs: `http://127.0.0.1:8000/api/docs` (OpenAPI).
+- Contract reference: `docs/api.md`; database design: `docs/database.md`.
+- Response envelope — success: `{"success": true, "data": …}`; error:
+  `{"error": {"code": "…", "message": "…"}}`.
+
+---
+
+## 6. Deployment
+
+- **Current hosting (reference):** Vercel (UI → `https://meditech-attendance-payroll-hr.vercel.app`),
+  Render (API → `https://hrms-api-4trx.onrender.com`), Render Postgres (production DB).
+  Both auto-deploy from the `main` branch.
+- Self-hosted options (Docker Compose on a free VM, or Kubernetes): full runbook in
+  `docs/DEPLOY.md`.
+
+---
+
+## 7. Key conventions
+
+- **Multi-tenant**: every record is scoped to a `company_id`; enforced server-side in
+  `core/rbac.py` (`ensure_perm`, `resolve_company_id`).
+- **eSSL mock-first**: `ESSL_MOCK_MODE=true` by default; real device credentials are
+  never committed. Direct device pulls need TCP/UDP 4370 access to device IPs.
+- **Payroll lifecycle**: `DRAFT → CALCULATING → REVIEW → APPROVED → LOCKED`.
+- **Frontend structure**: pages stay under `app/` (Next.js App Router requirement);
+  shared code goes in `components/`, `lib/`. See `frontend/AGENTS.md` for the
+  framework-specific notes.

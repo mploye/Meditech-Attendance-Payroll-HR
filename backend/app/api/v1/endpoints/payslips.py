@@ -1,14 +1,20 @@
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from pathlib import Path
 
 from api.deps import ensure_perm, get_current_user, get_db, orm_to_dict, resolve_company_id
-from core.errors import NotFoundError, success_response
+from core.errors import NotFoundError, PermissionDeniedError, success_response
 from models.payroll import PayrollPeriod
 from models.user import User
 from services import payslip_service
 
 router = APIRouter()
+
+PDF_READ_ERROR = (
+    "Cannot read this PDF with the current model — it does not support PDF input. "
+    "Use the HTML, Text, or JSON version instead: "
+    "GET /api/v1/payslips/{id}/html, /api/v1/payslips/{id}/text, /api/v1/payslips/{id}/json"
+)
 
 
 @router.post("/generate")
@@ -71,7 +77,39 @@ def mark_downloaded(payslip_id: str, user: User = Depends(get_current_user), db=
 def download_pdf(payslip_id: str, user: User = Depends(get_current_user), db=Depends(get_db)):
     cid = resolve_company_id(user)
     row = payslip_service.get_payslip(db, cid, payslip_id)
-    path = payslip_service.build_payslip_pdf(db, row)
+    try:
+        path = payslip_service.build_payslip_pdf(db, row)
+    except Exception as exc:
+        raise PermissionDeniedError(
+            f"Cannot read this payslip PDF ({exc}). " + PDF_READ_ERROR
+        )
     if not path or not Path(path).exists():
         raise NotFoundError("Payslip PDF")
     return FileResponse(path, media_type="application/pdf", filename=Path(path).name)
+
+
+@router.get("/{payslip_id}/html")
+def download_html(payslip_id: str, user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Return the payslip as an HTML document — readable by AI models and browsers."""
+    cid = resolve_company_id(user)
+    row = payslip_service.get_payslip(db, cid, payslip_id)
+    html = payslip_service.build_payslip_html(db, row)
+    return HTMLResponse(content=html, media_type="text/html; charset=utf-8")
+
+
+@router.get("/{payslip_id}/json")
+def download_json(payslip_id: str, user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Return the payslip as JSON — readable by AI models and scripts."""
+    cid = resolve_company_id(user)
+    row = payslip_service.get_payslip(db, cid, payslip_id)
+    data = payslip_service.build_payslip_json(db, row)
+    return JSONResponse(content=data)
+
+
+@router.get("/{payslip_id}/text")
+def download_text(payslip_id: str, user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Return the payslip as plain text — readable by AI models."""
+    cid = resolve_company_id(user)
+    row = payslip_service.get_payslip(db, cid, payslip_id)
+    text = payslip_service.build_payslip_text(row)
+    return PlainTextResponse(content=text, media_type="text/plain; charset=utf-8")

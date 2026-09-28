@@ -26,33 +26,27 @@ def _company_address(company: Company) -> str:
 
 
 def _company_header(company: Company) -> "Table":
-    """Return a payslip header table with the company logo, name and address."""
+    """Return a branded payslip header with company logo, name and address."""
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm
     from reportlab.platypus import Image, Paragraph, Table, TableStyle
+    from reportlab.lib import colors
 
     left: list = []
     if _COMPANY_LOGO.exists():
-        left.append(Image(str(_COMPANY_LOGO), width=18 * mm, height=None))
+        left.append(Image(str(_COMPANY_LOGO), width=24 * mm, height=None))
 
     name = company.legal_name or company.name
     address = _company_address(company)
     title_style = ParagraphStyle(
-        "CompanyTitle",
-        parent=ParagraphStyle("Normal"),
-        fontName="Helvetica-Bold",
-        fontSize=16,
-        leading=19,
-        textColor="#1f2937",
-        spaceAfter=2,
+        "CompanyTitle", parent=ParagraphStyle("Normal"),
+        fontName="Helvetica-Bold", fontSize=18, leading=21,
+        textColor="#ffffff", spaceAfter=1,
     )
     addr_style = ParagraphStyle(
-        "CompanyAddress",
-        parent=ParagraphStyle("Normal"),
-        fontName="Helvetica",
-        fontSize=9,
-        leading=12,
-        textColor="#4b5563",
+        "CompanyAddress", parent=ParagraphStyle("Normal"),
+        fontName="Helvetica", fontSize=9, leading=12,
+        textColor="#dbeafe",
     )
     right = [Paragraph(name, title_style)]
     if address:
@@ -64,16 +58,16 @@ def _company_header(company: Company) -> "Table":
     else:
         rows = [[right]]
 
-    header = Table(rows, colWidths=[22 * mm, 138 * mm])
-    header.setStyle(
-        TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ALIGN", (0, 0), (0, 0), "LEFT"),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-            ]
-        )
-    )
+    header = Table(rows, colWidths=[30 * mm, 130 * mm])
+    header.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#2563eb")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (0, 0), 8),
+        ("RIGHTPADDING", (1, 0), (1, 0), 12),
+        ("LEFTPADDING", (1, 0), (1, 0), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
     return header
 
 
@@ -132,7 +126,7 @@ def build_payslip_html(db: Session, payslip: Payslip) -> str:
     comp_name = (company.legal_name or company.name) if company else "Company"
     rows = "".join(f"<tr><td>{e['name']}</td><td>₹{e['amount']:,.2f}</td></tr>" for e in s["earnings"])
     drows = "".join(f"<tr><td>{e['name']}</td><td>₹{e['amount']:,.2f}</td></tr>" for e in s["deductions"])
-    return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Payslip - {s['employee_code']} - {s['period']}</title><style>body{{font-family:Helvetica,Arial,sans-serif;max-width:800px;margin:24px auto;color:#1f2937}}h1{{font-size:20px;margin:0 0 4px}}.sub{{color:#4b5563;font-size:13px;margin-bottom:16px}}table{{width:100%;border-collapse:collapse;margin:8px 0}}th,td{{padding:6px 8px;border:1px solid #d1d5db;text-align:left}}th{{background:#f3f4f6}}.net{{background:#dcfce7;font-weight:bold}}</style></head><body><h1>{comp_name}</h1><p class="sub">{s['employee_name']} | {s['employee_code']} | {s['department']} — {s['designation']}</p><p class="sub">Period: {s['period']}</p><table><tr><th>Info</th><th>Value</th></tr><tr><td>Working Days</td><td>{s['working_days']}</td></tr><tr><td>Present Days</td><td>{s['present_days']}</td></tr><tr><td>Leave Days</td><td>{s['leave_days']}</td></tr><tr><td>LOP Days</td><td>{s['lop_days']}</td></tr><tr><td>Overtime Minutes</td><td>{s['overtime_minutes']}</td></tr></table><h3>Earnings</h3><table><tr><th>Component</th><th>Amount</th></tr>{rows}</table><h3>Deductions</h3><table><tr><th>Component</th><th>Amount</th></tr>{drows}</table><table><tr class="net"><td>Gross Salary</td><td>₹{s['gross']:,.2f}</td></tr><tr class="net"><td>Total Deductions</td><td>₹{s['total_deductions']:,.2f}</td></tr><tr class="net"><td>Net Pay</td><td>₹{s['net']:,.2f}</td></tr></table><p class="sub" style="margin-top:16px;color:#9ca3af;">Generated {payslip.generated_at.isoformat() if payslip.generated_at else ''}</p></body></html>"""
+    return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Payslip - {s['employee_code']} - {s['period']}</title><style>body{{font-family:Helvetica,Arial,sans-serif;max-width:800px;margin:24px auto;color:#1f2937}}header{{background:#2563eb;color:#fff;padding:16px 20px;border-radius:8px}}header h1{{margin:0;font-size:20px}}header p{{margin:4px 0 0;color:#dbeafe;font-size:11px}}.banner{{background:#1e40af;color:#fff;text-align:center;font-size:20px;font-weight:bold;padding:10px;margin:12px 0;border-radius:4px}}.box{{display:flex;gap:16px;margin:12px 0}}.box table{{width:100%;border-collapse:collapse}}.box td{{padding:5px 8px;border:1px solid #cbd5e1;font-size:13px}}.box td.k{{background:#f1f5f9;font-weight:bold;width:40%}}.att{{display:flex;gap:16px}}.att table{{width:100%;border-collapse:collapse}}.att td{{padding:4px 8px;border:1px solid #cbd5e1;font-size:13px}}.att td.k{{background:#f1f5f9;font-weight:bold;width:50%}}.comp-table{{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}}.comp-table th{{background:#2563eb;color:#fff;padding:6px 8px;border:1px solid #2563eb}}.comp-table td{{padding:5px 8px;border:1px solid #e2e8f0}}.comp-table tr:last-child td{{background:#e0e7ff;font-weight:bold}}.summary{{margin-top:16px;font-size:14px}}.summary table{{width:100%;border-collapse:collapse}}.summary td{{padding:6px 8px;border:1px solid #cbd5e1}}.summary tr:last-child td{{background:#dcfce7;font-weight:bold;color:#166534}}.footer{{margin-top:16px;font-size:11px;color:#94a3b8}}</style></head><body><header><h1>{comp_name}</h1><p>{company.address if company and company.address else ""}</p></header><div class="banner">PAYSLIP</div><div class="box"><table><tr><td class="k">Employee</td><td>{s['employee_code']} — {s['employee_name']}</td></tr><tr><td class="k">Department</td><td>{s['department']} — {s['designation']}</td></tr><tr><td class="k">Period</td><td>{s['period']}</td></tr></table><table><tr><td class="k">Working</td><td>{s['working_days']}</td></tr><tr><td class="k">Present</td><td>{s['present_days']}</td></tr><tr><td class="k">Leave</td><td>{s['leave_days']}</td></tr><tr><td class="k">LOP</td><td>{s['lop_days']}</td></tr><tr><td class="k">Overtime</td><td>{s['overtime_minutes']} min</td></tr></table></div><div class="comp-table"><table><tr><th>Description</th><th>Amount (₹)</th><th>Type</th></tr>{rows}{drows}</table></div><div class="summary"><table><tr><td>Gross Salary</td><td>₹{s['gross']:,.2f}</td></tr><tr><td>Total Deductions</td><td>₹{s['total_deductions']:,.2f}</td></tr><tr><td>Net Pay</td><td>₹{s['net']:,.2f}</td></tr></table></div><div class="footer">Generated: {payslip.generated_at.isoformat() if payslip.generated_at else 'N/A'} | ID: {payslip.id} | Status: {payslip.status.value if payslip.status else 'N/A'}</div></body></html>"""
 
 
 def build_payslip_json(db: Session, payslip: Payslip) -> dict[str, object]:
@@ -190,116 +184,120 @@ def _payslip_elements(source: Payslip, record: PayrollRecord, company: Company) 
     styles = getSampleStyleSheet()
     emp_code, emp_name, department, designation = _employee_display(source)
     period_label = _period_label(source)
-
-    header = _company_header(company)
-
-    info_rows = [
-        ["Employee ID", emp_code],
-        ["Employee Name", emp_name],
-        ["Department", department],
-        ["Designation", designation],
-        ["Period", period_label],
-    ]
     attendance = source.payroll_record
-    info_rows.extend(
-        [
-            ["Working Days", str(attendance.working_days)],
-            ["Present Days", str(attendance.present_days)],
-            ["Leave Days", str(attendance.leave_days)],
-            ["LOP Days", str(attendance.lop_days)],
-            ["Overtime Minutes", str(attendance.overtime_minutes)],
-        ]
-    )
-    info = Table([[k, v] for k, v in info_rows], colWidths=[45 * mm, 115 * mm])
-    info.setStyle(
-        TableStyle(
-            [
-                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("BACKGROUND", (0, 0), (0, -1), colors.whitesmoke),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-            ]
-        )
-    )
-
     earnings = [c for c in record.components if c.component_type.value == "EARNING"]
     deductions = [c for c in record.components if c.component_type.value == "DEDUCTION"]
-    earn_table = Table(
-        [["Earnings", "Amount"],
-         *[[c.name, f"{c.amount:.2f}"] for c in earnings]],
-        colWidths=[120 * mm, 40 * mm],
-    )
-    earn_table.setStyle(
-        TableStyle(
-            [
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-            ]
-        )
-    )
-    ded_table = Table(
-        [["Deductions", "Amount"],
-         *[[c.name, f"{c.amount:.2f}"] for c in deductions]],
-        colWidths=[120 * mm, 40 * mm],
-    )
-    ded_table.setStyle(
-        TableStyle(
-            [
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-            ]
-        )
-    )
 
-    summary = Table(
-        [
-            ["Gross Salary", f"{source.gross:.2f}"],
-            ["Total Deductions", f"{source.total_deductions:.2f}"],
-            ["Net Pay", f"{source.net:.2f}"],
-        ],
-        colWidths=[80 * mm, 40 * mm],
-    )
-    summary.setStyle(
-        TableStyle(
-            [
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("BACKGROUND", (0, 2), (-1, 2), colors.lightgreen),
-                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-            ]
-        )
+    # ── Banner: "PAYSLIP" label ──
+    payslip_banner = Table([[Paragraph(
+        "<b>PAYSLIP</b>",
+        ParagraphStyle("Banner", parent=styles["Normal"],
+                         fontName="Helvetica-Bold", fontSize=20,
+                         leading=24, textColor="#ffffff"))]],
+        colWidths=[160 * mm])
+    payslip_banner.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#1e40af")),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+
+    # ── Employee info box ──
+    info_rows = [
+        ["Employee", f"{emp_code} — {emp_name}"],
+        ["Department", f"{department} — {designation}"],
+        ["Period", period_label],
+    ]
+    info = Table([[k, v] for k, v in info_rows], colWidths=[40 * mm, 120 * mm])
+    info.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f1f5f9")),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+    ]))
+
+    # ── Attendance section ──
+    att_rows = [
+        ["Working Days", str(attendance.working_days)],
+        ["Present", str(attendance.present_days)],
+        ["Leave", str(attendance.leave_days)],
+        ["LOP", str(attendance.lop_days)],
+        ["Overtime", f"{attendance.overtime_minutes} min"],
+    ]
+    att = Table(att_rows, colWidths=[50 * mm, 30 * mm])
+    att.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f1f5f9")),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+    ]))
+
+    # ── Earnings & Deductions table ──
+    all_rows = [["Description", "Amount (₹)", "Type"]]
+    for c in earnings:
+        all_rows.append([c.name, f"{c.amount:,.2f}", "Earning"])
+    for c in deductions:
+        all_rows.append([c.name, f"{c.amount:,.2f}", "Deduction"])
+    comp_table = Table(all_rows, colWidths=[90 * mm, 40 * mm, 30 * mm])
+    comp_table.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#e2e8f0")),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2563eb")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#e0e7ff")),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+    ]))
+
+    # ── Summary box (Gross / Deductions / Net) ──
+    summary = Table([
+        ["Gross Salary", f"{source.gross:,.2f}"],
+        ["Total Deductions", f"{source.total_deductions:,.2f}"],
+        ["Net Pay", f"{source.net:,.2f}"],
+    ], colWidths=[80 * mm, 40 * mm])
+    summary.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("BACKGROUND", (0, 2), (-1, 2), colors.HexColor("#dcfce7")),
+        ("FONTNAME", (0, 2), (-1, 2), "Helvetica-Bold"),
+        ("TEXTCOLOR", (0, 2), (-1, 2), colors.HexColor("#166534")),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+
+    # ── Footer ──
+    footer = Paragraph(
+        f"Generated: {source.generated_at.strftime('%Y-%m-%d %H:%M') if source.generated_at else 'N/A'} | "
+        f"Payslip ID: {str(source.id)} | "
+        f"Status: {source.status.value if source.status else 'N/A'}",
+        ParagraphStyle("Footer", parent=styles["Normal"],
+                       fontName="Helvetica", fontSize=7.5,
+                       textColor="#94a3b8", leading=10),
     )
 
     return [
-        header,
-        Spacer(1, 2 * mm),
-        Paragraph(
-            f"<b>Payslip - {period_label}</b>",
-            ParagraphStyle(
-                "PayslipSubtitle",
-                parent=ParagraphStyle("Normal"),
-                fontName="Helvetica-Bold",
-                fontSize=12,
-                textColor="#374151",
-            ),
-        ),
-        Spacer(1, 4 * mm),
-        info,
-        Spacer(1, 4 * mm),
-        earn_table,
-        Spacer(1, 3 * mm),
-        ded_table,
-        Spacer(1, 4 * mm),
-        summary,
+        header, Spacer(1, 3 * mm),
+        payslip_banner, Spacer(1, 3 * mm),
+        info, Spacer(1, 3 * mm),
+        att, Spacer(1, 4 * mm),
+        comp_table, Spacer(1, 4 * mm),
+        summary, Spacer(1, 3 * mm),
+        footer,
     ]
 
 
@@ -308,18 +306,18 @@ def build_payslip_pdf(db: Session, payslip: Payslip) -> str:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
     from reportlab.platypus import SimpleDocTemplate
+    from reportlab.lib import colors
 
     output_dir = _ensure_dirs(payslip)
     emp_code, _name, _dept, _desig = _employee_display(payslip)
     filename = f"{payslip.period.year}-{payslip.period.month:02d}-{emp_code}.pdf"
     filepath = output_dir / filename
     doc = SimpleDocTemplate(
-        str(filepath),
-        pagesize=A4,
-        rightMargin=18 * mm,
-        leftMargin=18 * mm,
-        topMargin=14 * mm,
-        bottomMargin=14 * mm,
+        str(filepath), pagesize=A4,
+        rightMargin=18 * mm, leftMargin=18 * mm,
+        topMargin=14 * mm, bottomMargin=14 * mm,
+        title=f"Payslip - {emp_code} - {payslip.period.year}-{payslip.period.month:02d}",
+        author="ESSL HRMS",
     )
     record = payslip.payroll_record
     company = db.get(Company, payslip.company_id)

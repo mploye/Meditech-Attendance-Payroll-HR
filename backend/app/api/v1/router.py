@@ -11,6 +11,7 @@ from api.v1.endpoints import (
     devices,
     employees,
     holidays,
+    imports,
     integrations_essl,
     leaves,
     loans,
@@ -48,3 +49,4 @@ api_router.include_router(payslips.router, prefix="/payslips", tags=["Payslips"]
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 api_router.include_router(audit.router, prefix="/audit", tags=["Audit"])
 api_router.include_router(device_sync.router, prefix="/device-sync", tags=["Device Connector"])
+api_router.include_router(imports.router, prefix="/imports", tags=["Import & Devices"])

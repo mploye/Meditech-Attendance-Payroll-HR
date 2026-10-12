@@ -132,6 +132,38 @@ def current_duration(entry: BreakLog, tz: Optional[str] = None) -> int:
     return max(0, int((company_now(tz) - entry.start_time).total_seconds() // 60))
 
 
+def logged_day_break_minutes(
+    db: Session,
+    company_id: str,
+    employee_id: str,
+    day,
+    tz: Optional[str] = None,
+) -> int:
+    """Sum of recorded BreakLog minutes for an employee on a day (0 when none).
+
+    Unlike ``day_break_minutes`` this never falls back to the shift budget, so
+    callers can tell "no breaks logged" apart from "measured break time".
+    """
+    entries = list(
+        db.scalars(
+            select(BreakLog).where(
+                BreakLog.company_id == company_id,
+                BreakLog.employee_id == employee_id,
+                BreakLog.break_date == day,
+            )
+        )
+    )
+    if not entries:
+        return 0
+    total = 0
+    for e in entries:
+        if e.status == BreakStatus.COMPLETED:
+            total += int(e.duration_minutes or 0)
+        elif e.status == BreakStatus.ACTIVE:
+            total += current_duration(e, tz)
+    return total
+
+
 def day_break_minutes(
     db: Session,
     company_id: str,

@@ -39,8 +39,10 @@ app.add_middleware(
 
 
 from api.v1.router import api_router  # noqa: E402
+from api.v1.endpoints.iclock import router as iclock_router  # noqa: E402
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+app.include_router(iclock_router)  # eSSL ADMS push lives at the root path (/iclock/*)
 register_exception_handlers(app)
 
 if _STATIC_DIR.exists():

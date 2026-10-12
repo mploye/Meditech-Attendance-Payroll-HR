@@ -279,6 +279,33 @@ def _upsert_daily(
     return record
 
 
+def _punched_break_minutes(logs: list[AttendanceLog]) -> int:
+    """Sum of mid-day OUT->IN gaps from a raw punch sequence.
+
+    Breaks punched on a terminal appear as an OUT (start) followed later by an
+    IN (return). Every such pair between the first IN and the last OUT is
+    counted as break time; this powers multi-break days (tea / lunch / restroom)
+    without requiring employees to log breaks in the UI.
+    """
+    ordered = sorted(logs, key=lambda log: _normalize_ts(log.event_timestamp))
+    total = 0
+    prev: Optional[AttendanceLog] = None
+    for log in ordered:
+        if (
+            prev is not None
+            and prev.event_type == EventType.OUT
+            and log.event_type in (EventType.IN, EventType.UNKNOWN)
+        ):
+            gap = int(
+                (_normalize_ts(log.event_timestamp) - _normalize_ts(prev.event_timestamp)).total_seconds()
+                // 60
+            )
+            if gap > 0:
+                total += gap
+        prev = log
+    return total
+
+
 def process_day(
     db: Session, company_id: str, employee_id: str, day: date
 ) -> AttendanceDaily | None:
@@ -312,7 +339,14 @@ def process_day(
         )
 
     resolved_start, resolved_end = shift_service.resolve_shift_times(shift, day, tz)
-    break_minutes = break_service.day_break_minutes(db, company_id, employee_id, day, shift, tz)
+    logged_breaks = break_service.logged_day_break_minutes(db, company_id, employee_id, day, tz)
+    punched_breaks = _punched_break_minutes(logs)
+    if logged_breaks:
+        break_minutes = logged_breaks
+    elif punched_breaks:
+        break_minutes = punched_breaks
+    else:
+        break_minutes = break_service.day_break_minutes(db, company_id, employee_id, day, shift, tz)
     worked_minutes = (
         int((last_out - first_in).total_seconds() // 60) - break_minutes
         if first_in and last_out

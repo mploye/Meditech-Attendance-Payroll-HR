@@ -65,6 +65,23 @@ def test_cdata_inserts_log_for_mapped_employee(client, env, db):
     assert env["device"].status == DeviceStatus.ONLINE
 
 
+def test_cdata_aspx_path_accepted(client, env, db):
+    r = client.post(
+        "/iclock/cdata.aspx?SN=ORCUS123",
+        content="USERID=A001\tCHECKTIME=2026-10-12 09:00:00\tCHECKTYPE=I",
+        headers={"Content-Type": "text/plain"},
+    )
+    assert r.status_code == 200
+    assert r.text == "OK"
+    assert db.scalar(select(func.count(AttendanceLog.id))) == 1
+
+
+def test_getrequest_aspx_returns_empty(client):
+    r = client.get("/iclock/getrequest.aspx?SN=ORCUS123")
+    assert r.status_code == 200
+    assert r.text == ""
+
+
 def test_cdata_unknown_device_rejected(client):
     r = _push(client, "USERID=A001\tCHECKTIME=2026-10-12 09:00:00\tCHECKTYPE=I", sn="UNKNOWN999")
     assert r.status_code == 403

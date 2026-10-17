@@ -171,8 +171,13 @@ def _resolve_device_employee(db: Session, company_id: str, device_id: str, devic
 
 
 @router.post("/iclock/cdata", include_in_schema=False)
+@router.post("/iclock/cdata.aspx", include_in_schema=False)
 async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
-    """Receive the device's punch push stream and persist raw attendance logs."""
+    """Receive the device's punch push stream and persist raw attendance logs.
+
+    eSSL Orcus firmware posts to ``/iclock/cdata.aspx`` (with the ``.aspx``
+    suffix); other ZKTeco firmware uses ``/iclock/cdata``. Both are accepted.
+    """
     body = (await request.body()).decode("utf-8", errors="ignore")
     records = _parse_records(body)
     logger.info(
@@ -245,9 +250,16 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
     return PlainTextResponse("OK")
 
 
-@router.get("/iclock/getrequest", include_in_schema=False)
-def iclock_getrequest(request: Request, db: Session = Depends(get_db), sn: Optional[str] = None):
-    """Command channel probe. Empty response = no pending commands for the device."""
+@router.api_route("/iclock/getrequest", methods=["GET", "POST"], include_in_schema=False)
+@router.api_route("/iclock/getrequest.aspx", methods=["GET", "POST"], include_in_schema=False)
+def iclock_getrequest(request: Request, db: Session = Depends(get_db)):
+    """Command channel probe. Empty response = no pending commands for the device.
+
+    eSSL Orcus firmware calls ``/iclock/getrequest.aspx?SN=...`` every ~30s.
+    We must return an EMPTY body (not "OK") or the device treats it as a
+    pending command and may stall its punch upload.
+    """
+    sn = request.query_params.get("SN") or request.query_params.get("sn")
     _probe(db, request, "getrequest", sn=sn)
     return PlainTextResponse("")
 

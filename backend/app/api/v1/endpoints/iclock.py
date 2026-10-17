@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from api.deps import get_db
 from core.timezone import get_zone
+from models.audit import AuditLog
 from models.device import Device
 from models.enums import DeviceStatus, EventType, LogSource
 from services import attendance_service
@@ -30,6 +31,40 @@ from services import attendance_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _probe(db: Session, request: Request, endpoint: str, sn=None, body=""):
+    """Persist every /iclock hit so we can see device connectivity in the DB.
+
+    Render's log API only surfaces build/startup logs, so we record probes to
+    the (already existing) audit_logs table instead. This catches hits from
+    unknown serials too, which is how we diagnose a device pushing with the
+    wrong SN.
+    """
+    try:
+        client = request.client.host if request.client else None
+        db.add(
+            AuditLog(
+                action="iclock_probe",
+                entity_type="iclock",
+                new_value={
+                    "endpoint": endpoint,
+                    "sn": sn,
+                    "method": request.method,
+                    "query": dict(request.query_params),
+                    "client": client,
+                    "body": (body or "")[:500],
+                },
+                ip_address=client,
+                user_agent=request.headers.get("user-agent"),
+            )
+        )
+        db.commit()
+    except Exception:  # pragma: no cover - diagnostic only
+        try:
+            db.rollback()
+        except Exception:
+            pass
 
 _CHECKTYPE_MAP = {
     "I": EventType.IN,
@@ -149,6 +184,7 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
 
     params = request.query_params
     serial = params.get("SN") or params.get("sn") or params.get("serial") or (records[0].get("SN") if records else None)
+    _probe(db, request, "cdata", sn=serial, body=body)
     device = _device_for_serial(db, serial)
     if device is None:
         logger.warning("iclock push from unknown device SN=%s", serial)
@@ -210,47 +246,39 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/iclock/getrequest", include_in_schema=False)
-def iclock_getrequest(request: Request, sn: Optional[str] = None):
+def iclock_getrequest(request: Request, db: Session = Depends(get_db), sn: Optional[str] = None):
     """Command channel probe. Empty response = no pending commands for the device."""
-    logger.info(
-        "iclock/getrequest HIT client=%s query=%s",
-        request.client.host if request.client else "?",
-        dict(request.query_params),
-    )
+    _probe(db, request, "getrequest", sn=sn)
     return PlainTextResponse("")
 
 
 @router.post("/iclock/request", include_in_schema=False)
-def iclock_request(request: Request):
+def iclock_request(request: Request, db: Session = Depends(get_db)):
     """Device posts its status here; acknowledge."""
+    _probe(db, request, "request")
     return PlainTextResponse("OK")
 
 
 @router.get("/iclock/request", include_in_schema=False)
-def iclock_request_get(request: Request):
+def iclock_request_get(request: Request, db: Session = Depends(get_db)):
+    _probe(db, request, "request")
     return PlainTextResponse("OK")
 
 
 @router.post("/iclock/devicecmd", include_in_schema=False)
-def iclock_devicecmd(request: Request):
+def iclock_devicecmd(request: Request, db: Session = Depends(get_db)):
     """Device confirms it executed a command; acknowledge."""
+    _probe(db, request, "devicecmd")
     return PlainTextResponse("OK")
 
 
 @router.api_route("/iclock/{rest:path}", methods=["GET", "POST"], include_in_schema=False)
-async def iclock_catchall(rest: str, request: Request):
-    """Diagnostic catch-all: log any /iclock path we didn't implement, ack with OK."""
+async def iclock_catchall(rest: str, request: Request, db: Session = Depends(get_db)):
+    """Diagnostic catch-all: record any /iclock path we didn't implement, ack with OK."""
     body = ""
     if request.method == "POST":
         body = (await request.body()).decode("utf-8", errors="ignore")
-    logger.info(
-        "iclock UNKNOWN path=%s method=%s client=%s query=%s body=%r",
-        rest,
-        request.method,
-        request.client.host if request.client else "?",
-        dict(request.query_params),
-        body[:400],
-    )
+    _probe(db, request, f"catchall:{rest}", body=body)
     return PlainTextResponse("OK")
 
 

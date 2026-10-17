@@ -140,6 +140,12 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
     """Receive the device's punch push stream and persist raw attendance logs."""
     body = (await request.body()).decode("utf-8", errors="ignore")
     records = _parse_records(body)
+    logger.info(
+        "iclock/cdata HIT client=%s query=%s body=%r",
+        request.client.host if request.client else "?",
+        dict(request.query_params),
+        body[:400],
+    )
 
     params = request.query_params
     serial = params.get("SN") or params.get("sn") or params.get("serial") or (records[0].get("SN") if records else None)
@@ -204,9 +210,13 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/iclock/getrequest", include_in_schema=False)
-def iclock_getrequest(sn: Optional[str] = None):
+def iclock_getrequest(request: Request, sn: Optional[str] = None):
     """Command channel probe. Empty response = no pending commands for the device."""
-    logger.debug("iclock getrequest SN=%s", sn)
+    logger.info(
+        "iclock/getrequest HIT client=%s query=%s",
+        request.client.host if request.client else "?",
+        dict(request.query_params),
+    )
     return PlainTextResponse("")
 
 
@@ -225,6 +235,24 @@ def iclock_request_get(request: Request):
 def iclock_devicecmd(request: Request):
     """Device confirms it executed a command; acknowledge."""
     return PlainTextResponse("OK")
+
+
+@router.api_route("/iclock/{rest:path}", methods=["GET", "POST"], include_in_schema=False)
+async def iclock_catchall(rest: str, request: Request):
+    """Diagnostic catch-all: log any /iclock path we didn't implement, ack with OK."""
+    body = ""
+    if request.method == "POST":
+        body = (await request.body()).decode("utf-8", errors="ignore")
+    logger.info(
+        "iclock UNKNOWN path=%s method=%s client=%s query=%s body=%r",
+        rest,
+        request.method,
+        request.client.host if request.client else "?",
+        dict(request.query_params),
+        body[:400],
+    )
+    return PlainTextResponse("OK")
+
 
 
 def _company_timezone(db: Session, company_id: str) -> str:

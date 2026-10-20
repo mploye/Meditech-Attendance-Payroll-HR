@@ -99,6 +99,44 @@ def sync_now(device_id: str, user: User = Depends(get_current_user), db=Depends(
     return success_response(result)
 
 
+@router.post("/{device_id}/pull-data")
+def pull_data(device_id: str, body: dict | None = None, user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Queue ADMS data-query commands so a connected device uploads its data.
+
+    The device polls /iclock/getrequest and executes queued commands, then
+    POSTs the results to /iclock/cdata. Used to fetch enrolled users and
+    historical attendance (e.g. a full month) without local CSV exports.
+    """
+    ensure_perm(user, "devices.sync")
+    cid = resolve_company_id(user)
+    device = _get_device(db, cid, device_id)
+    from api.v1.endpoints.iclock import queue_command
+
+    body = body or {}
+    start = body.get("start")
+    end = body.get("end")
+    want_users = bool(body.get("users", True))
+    want_attendance = bool(body.get("attendance", True))
+
+    queued: list[str] = []
+    if want_users:
+        cmd = "DATA QUERY USERINFO"
+        queue_command(device.serial_number, cmd)
+        queued.append(cmd)
+    if want_attendance and start and end:
+        cmd = f"DATA QUERY ATTLOG StartTime={start} 00:00:00\tEndTime={end} 23:59:59"
+        queue_command(device.serial_number, cmd)
+        queued.append(cmd)
+
+    return success_response(
+        {
+            "device": device.serial_number,
+            "queued": queued,
+            "note": "Commands run on the device's next poll (within ~10s). Watch /iclock/cdata hits.",
+        }
+    )
+
+
 @router.get("/{device_id}/sync-logs")
 def sync_logs(device_id: str, user: User = Depends(get_current_user), db=Depends(get_db)):
     ensure_perm(user, "devices.view")

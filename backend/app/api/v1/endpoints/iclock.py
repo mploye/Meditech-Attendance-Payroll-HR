@@ -13,6 +13,7 @@ eSSL format and the legacy positional ZKTeco ATTLOG format are accepted.
 """
 
 import logging
+import threading
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -31,6 +32,37 @@ from services import attendance_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# --- ADMS server->device command queue -------------------------------------
+# The device polls /iclock/getrequest continuously; to pull data we queue a
+# command for its serial and hand it back on the next poll. Single worker
+# deployment (WEB_CONCURRENCY=1), so a process-local queue is sufficient.
+_cmd_lock = threading.Lock()
+_cmd_queue: dict[str, list[str]] = {}
+_cmd_counter = {"n": 0}
+
+
+def queue_command(sn: str, command: str) -> None:
+    sn = (sn or "").strip()
+    if not sn:
+        return
+    with _cmd_lock:
+        _cmd_queue.setdefault(sn, []).append(command)
+
+
+def _pop_command(sn: str) -> Optional[str]:
+    with _cmd_lock:
+        queue = _cmd_queue.get(sn)
+        if queue:
+            return queue.pop(0)
+    return None
+
+
+def _next_cmd_id() -> int:
+    with _cmd_lock:
+        _cmd_counter["n"] += 1
+        return _cmd_counter["n"]
+
 
 
 def _probe(db: Session, request: Request, endpoint: str, sn=None, body=""):
@@ -133,6 +165,27 @@ def _parse_records(body: str) -> list[dict]:
     return records
 
 
+def _canonical_records(records: list[dict]) -> list[dict]:
+    """Normalise eSSL ADMS field names to the canonical USERID/CHECKTIME/CHECKTYPE."""
+    for record in records:
+        if "USERID" not in record:
+            for alias in ("PIN", "USER_ID", "ENROLLID", "ENROLL_ID", "EMPID"):
+                if alias in record:
+                    record["USERID"] = record[alias]
+                    break
+        if "CHECKTIME" not in record:
+            for alias in ("DATETIME", "TIME", "PUNCHTIME", "CHECK_TIME"):
+                if alias in record:
+                    record["CHECKTIME"] = record[alias]
+                    break
+        if "CHECKTYPE" not in record:
+            for alias in ("STATUS", "STATE", "ATT", "VERIFY"):
+                if alias in record:
+                    record["CHECKTYPE"] = record[alias]
+                    break
+    return records
+
+
 def _record_event_type(record: dict) -> Optional[EventType]:
     for key in ("CHECKTYPE", "ATT", "STATUS", "EVENT_TYPE", "TYPE", "STATE"):
         value = record.get(key)
@@ -168,6 +221,66 @@ def _resolve_device_employee(db: Session, company_id: str, device_id: str, devic
         )
     )
     return str(mapping.employee_id) if mapping is not None else None
+
+
+def _ingest_userinfo(db: Session, device: Device, records: list[dict]) -> int:
+    """Create/refresh employees + device mappings from an ADMS USERINFO push.
+
+    ADMS USERINFO lines look like ``PIN=1\tName=John Doe\tPri=0\t...``. We map
+    ``PIN`` -> device_user_id and create an employee (code ``E<PIN>``) if none
+    is linked yet, mirroring the CSV importer behaviour.
+    """
+    from models.employee import Employee
+    from models.employee_device import EmployeeDevice
+
+    company_id = str(device.company_id)
+    device_id = str(device.id)
+    created = 0
+    for record in records:
+        pin = str(record.get("USERID") or record.get("PIN") or "").strip()
+        if not pin:
+            continue
+        name = (record.get("NAME") or record.get("USERNAME") or "").strip() or f"User {pin}"
+
+        mapping = db.scalar(
+            select(EmployeeDevice).where(
+                EmployeeDevice.company_id == company_id,
+                EmployeeDevice.device_id == device_id,
+                EmployeeDevice.device_user_id == pin,
+            )
+        )
+        if mapping is not None:
+            continue
+
+        employee = db.scalar(
+            select(Employee).where(
+                Employee.company_id == company_id,
+                Employee.employee_code == f"E{pin}",
+            )
+        )
+        if employee is None:
+            parts = name.split(" ", 1)
+            employee = Employee(
+                company_id=company_id,
+                employee_code=f"E{pin}",
+                first_name=parts[0][:100] or f"E{pin}",
+                last_name=(parts[1][:100] if len(parts) > 1 else None),
+            )
+            db.add(employee)
+            db.flush()
+            created += 1
+
+        db.add(
+            EmployeeDevice(
+                company_id=company_id,
+                employee_id=str(employee.id),
+                device_id=device_id,
+                device_user_id=pin,
+            )
+        )
+    db.commit()
+    logger.info("iclock USERINFO SN=%s: users=%d new_employees=%d", device.serial_number, len(records), created)
+    return created
 
 
 def _option_response(sn: str) -> str:
@@ -223,12 +336,19 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
 
     params = request.query_params
     serial = params.get("SN") or params.get("sn") or params.get("serial") or (records[0].get("SN") if records else None)
-    _probe(db, request, "cdata", sn=serial, body=body)
+    table = (params.get("table") or params.get("Table") or "").strip().upper()
+    _probe(db, request, f"cdata:{table or 'ATTLOG'}", sn=serial, body=body)
     device = _device_for_serial(db, serial)
     if device is None:
         logger.warning("iclock push from unknown device SN=%s", serial)
         return PlainTextResponse("Error: device not registered", status_code=403)
 
+    if table in ("USERINFO", "USER", "OPERLOG"):
+        if table == "USERINFO":
+            _ingest_userinfo(db, device, _canonical_records(records))
+        return PlainTextResponse("OK")
+
+    records = _canonical_records(records)
     company_id = str(device.company_id)
     company_tz = get_zone(_company_timezone(db, company_id))
 
@@ -289,12 +409,15 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
 def iclock_getrequest(request: Request, db: Session = Depends(get_db)):
     """Command channel probe. Empty response = no pending commands for the device.
 
-    eSSL Orcus firmware calls ``/iclock/getrequest.aspx?SN=...`` every ~30s.
-    We must return an EMPTY body (not "OK") or the device treats it as a
-    pending command and may stall its punch upload.
+    eSSL Orcus firmware calls ``/iclock/getrequest.aspx?SN=...`` every ~7s.
+    If a server->device command is queued for this serial we return it as
+    ``C:<id>:<command>``; otherwise an EMPTY body means "nothing to do".
     """
     sn = request.query_params.get("SN") or request.query_params.get("sn")
-    _probe(db, request, "getrequest", sn=sn)
+    command = _pop_command(sn) if sn else None
+    _probe(db, request, "getrequest", sn=sn, body=command or "")
+    if command:
+        return PlainTextResponse(f"C:{_next_cmd_id()}:{command}")
     return PlainTextResponse("")
 
 

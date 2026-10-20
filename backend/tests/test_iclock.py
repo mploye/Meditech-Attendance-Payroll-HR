@@ -82,6 +82,53 @@ def test_getrequest_aspx_returns_empty(client):
     assert r.text == ""
 
 
+def test_getrequest_returns_queued_command(client, env):
+    from api.v1.endpoints.iclock import queue_command
+
+    queue_command("ORCUS123", "DATA QUERY USERINFO")
+    r = client.get("/iclock/getrequest.aspx?SN=ORCUS123")
+    assert r.status_code == 200
+    assert "DATA QUERY USERINFO" in r.text
+    assert r.text.startswith("C:")
+    # command is consumed once
+    assert client.get("/iclock/getrequest.aspx?SN=ORCUS123").text == ""
+
+
+def test_userinfo_creates_employee_and_mapping(client, env, db):
+    from sqlalchemy import select
+
+    from models.employee import Employee
+    from models.employee_device import EmployeeDevice
+
+    r = client.post(
+        "/iclock/cdata.aspx?SN=ORCUS123&table=USERINFO",
+        content="PIN=7\tName=Jane Doe\tPri=0\tGrp=1",
+        headers={"Content-Type": "text/plain"},
+    )
+    assert r.status_code == 200
+    emp = db.scalar(select(Employee).where(Employee.employee_code == "E7"))
+    assert emp is not None
+    assert emp.first_name == "Jane"
+    mapping = db.scalar(select(EmployeeDevice).where(EmployeeDevice.device_user_id == "7"))
+    assert mapping is not None
+    assert str(mapping.employee_id) == str(emp.id)
+
+
+def test_attlog_pin_alias_ingested(client, env, db):
+    from models.attendance import AttendanceLog
+
+    r = client.post(
+        "/iclock/cdata.aspx?SN=ORCUS123&table=ATTLOG",
+        content="PIN=A001\tDateTime=2026-10-12 09:00:00\tStatus=0",
+        headers={"Content-Type": "text/plain"},
+    )
+    assert r.status_code == 200
+    logs = list(db.scalars(select(AttendanceLog)))
+    assert len(logs) == 1
+    assert logs[0].device_user_id == "A001"
+    assert logs[0].event_type == EventType.IN
+
+
 def test_cdata_get_returns_option_block(client):
     r = client.get(
         "/iclock/cdata.aspx?SN=ORCUS123&options=all&pushver=2.4.1&DeviceType=att"

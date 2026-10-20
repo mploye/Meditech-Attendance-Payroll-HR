@@ -180,8 +180,8 @@ def _option_response(sn: str) -> str:
     """
     lines = [
         f"GET OPTION FROM: {sn}",
-        "Stamp=9999",
-        "OpStamp=9999",
+        "Stamp=0",
+        "OpStamp=0",
         "ErrorDelay=30",
         "Delay=10",
         "TransTimes=00:00;14:05",

@@ -170,6 +170,40 @@ def _resolve_device_employee(db: Session, company_id: str, device_id: str, devic
     return str(mapping.employee_id) if mapping is not None else None
 
 
+def _option_response(sn: str) -> str:
+    """ZKTeco/eSSL ADMS registration/config handshake reply.
+
+    The device calls ``GET /iclock/cdata.aspx?SN=...&options=all&pushver=...``
+    on connect. It will NOT upload punches until it receives a ``GET OPTION
+    FROM: <sn>`` block. ``Realtime=1`` enables instant push; the ``Trans*``
+    values make it report attendance immediately.
+    """
+    lines = [
+        f"GET OPTION FROM: {sn}",
+        "Stamp=9999",
+        "OpStamp=9999",
+        "ErrorDelay=30",
+        "Delay=10",
+        "TransTimes=00:00;14:05",
+        "TransInterval=1",
+        "TransFlag=1111000000",
+        "TimeZone=5.5",
+        "Realtime=1",
+        "Encrypt=None",
+    ]
+    return "\r\n".join(lines) + "\r\n"
+
+
+@router.api_route("/iclock/cdata", methods=["GET"], include_in_schema=False)
+@router.api_route("/iclock/cdata.aspx", methods=["GET"], include_in_schema=False)
+def iclock_cdata_options(request: Request, db: Session = Depends(get_db)):
+    """ADMS registration handshake: reply with the device config block."""
+    params = request.query_params
+    sn = params.get("SN") or params.get("sn") or ""
+    _probe(db, request, "cdata-options", sn=sn)
+    return PlainTextResponse(_option_response(sn))
+
+
 @router.post("/iclock/cdata", include_in_schema=False)
 @router.post("/iclock/cdata.aspx", include_in_schema=False)
 async def iclock_cdata(request: Request, db: Session = Depends(get_db)):

@@ -82,6 +82,15 @@ def test_getrequest_aspx_returns_empty(client):
     assert r.text == ""
 
 
+def test_cdata_get_returns_option_block(client):
+    r = client.get(
+        "/iclock/cdata.aspx?SN=ORCUS123&options=all&pushver=2.4.1&DeviceType=att"
+    )
+    assert r.status_code == 200
+    assert r.text.startswith("GET OPTION FROM: ORCUS123")
+    assert "Realtime=1" in r.text
+
+
 def test_cdata_unknown_device_rejected(client):
     r = _push(client, "USERID=A001\tCHECKTIME=2026-10-12 09:00:00\tCHECKTYPE=I", sn="UNKNOWN999")
     assert r.status_code == 403

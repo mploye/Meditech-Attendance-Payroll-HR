@@ -147,13 +147,20 @@ def assign_shift(shift_id: str, body: dict, user: User = Depends(get_current_use
     effective_from = body.get("effective_from")
     if isinstance(effective_from, str):
         effective_from = date.fromisoformat(effective_from)
+    effective_to = body.get("effective_to")
+    if isinstance(effective_to, str):
+        effective_to = date.fromisoformat(effective_to)
     created = []
     for emp_id in employee_ids:
         emp = db.get(Employee, emp_id)
         if emp is None or str(emp.company_id) != cid:
             continue
         assignment = ShiftAssignment(
-            company_id=cid, employee_id=str(emp_id), shift_id=str(shift.id), effective_from=effective_from
+            company_id=cid,
+            employee_id=str(emp_id),
+            shift_id=str(shift.id),
+            effective_from=effective_from,
+            effective_to=effective_to,
         )
         db.add(assignment)
         created.append(str(emp_id))

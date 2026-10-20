@@ -129,6 +129,31 @@ def test_attlog_pin_alias_ingested(client, env, db):
     assert logs[0].event_type == EventType.IN
 
 
+def test_biodata_user_lines_create_employees(client, env, db):
+    from sqlalchemy import select
+
+    from models.employee import Employee
+    from models.employee_device import EmployeeDevice
+
+    body = (
+        "BIODATA Pin=1\tNo=0\tIndex=0\tValid=1\tType=9\tTmp=AAAA\n"
+        "USER PIN=1\tName=DEEPAK.K\tPri=14\tGrp=1\tVerify=-1\n"
+        "USER PIN=2\tName=SAKTHIVEL\tPri=0\tGrp=1\tVerify=0\n"
+    )
+    r = client.post(
+        "/iclock/cdata.aspx?SN=ORCUS123&table=BIODATA",
+        content=body,
+        headers={"Content-Type": "text/plain"},
+    )
+    assert r.status_code == 200
+    emp1 = db.scalar(select(Employee).where(Employee.employee_code == "E1"))
+    emp2 = db.scalar(select(Employee).where(Employee.employee_code == "E2"))
+    assert emp1 is not None and emp1.first_name == "DEEPAK.K"
+    assert emp2 is not None and emp2.first_name == "SAKTHIVEL"
+    pins = set(db.scalars(select(EmployeeDevice.device_user_id)))
+    assert {"1", "2"} <= pins
+
+
 def test_cdata_get_returns_option_block(client):
     r = client.get(
         "/iclock/cdata.aspx?SN=ORCUS123&options=all&pushver=2.4.1&DeviceType=att"

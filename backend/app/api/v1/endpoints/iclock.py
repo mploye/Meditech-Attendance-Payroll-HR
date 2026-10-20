@@ -223,12 +223,30 @@ def _resolve_device_employee(db: Session, company_id: str, device_id: str, devic
     return str(mapping.employee_id) if mapping is not None else None
 
 
-def _ingest_userinfo(db: Session, device: Device, records: list[dict]) -> int:
-    """Create/refresh employees + device mappings from an ADMS USERINFO push.
+def _split_user_and_punch(records: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Separate user-info records from punch records in a mixed ADMS push.
 
-    ADMS USERINFO lines look like ``PIN=1\tName=John Doe\tPri=0\t...``. We map
-    ``PIN`` -> device_user_id and create an employee (code ``E<PIN>``) if none
-    is linked yet, mirroring the CSV importer behaviour.
+    eSSL firmware sends user info as ``USER PIN=1\tName=DEEPAK.K\tGrp=1...``
+    (often embedded in a ``BIODATA`` push alongside biometric templates).
+    Punch records carry a ``CHECKTIME``/``DateTime``.
+    """
+    users: list[dict] = []
+    punches: list[dict] = []
+    for record in records:
+        pin = record.get("USER PIN") or record.get("PIN") or record.get("USERID")
+        name = record.get("NAME") or record.get("USERNAME")
+        if name and pin:
+            users.append({"PIN": str(pin).strip(), "NAME": str(name).strip()})
+        elif record.get("CHECKTIME") or record.get("DATETIME"):
+            punches.append(record)
+    return users, punches
+
+
+def _create_employees_from_users(db: Session, device: Device, users: list[dict]) -> int:
+    """Create employees + device mappings for users reported by the device.
+
+    Employees are keyed by ``employee_code = E<PIN>`` (idempotent); the display
+    name comes from the device's ``Name`` field.
     """
     from models.employee import Employee
     from models.employee_device import EmployeeDevice
@@ -236,21 +254,11 @@ def _ingest_userinfo(db: Session, device: Device, records: list[dict]) -> int:
     company_id = str(device.company_id)
     device_id = str(device.id)
     created = 0
-    for record in records:
-        pin = str(record.get("USERID") or record.get("PIN") or "").strip()
+    for user in users:
+        pin = (user.get("PIN") or "").strip()
         if not pin:
             continue
-        name = (record.get("NAME") or record.get("USERNAME") or "").strip() or f"User {pin}"
-
-        mapping = db.scalar(
-            select(EmployeeDevice).where(
-                EmployeeDevice.company_id == company_id,
-                EmployeeDevice.device_id == device_id,
-                EmployeeDevice.device_user_id == pin,
-            )
-        )
-        if mapping is not None:
-            continue
+        name = (user.get("NAME") or "").strip() or f"User {pin}"
 
         employee = db.scalar(
             select(Employee).where(
@@ -270,16 +278,24 @@ def _ingest_userinfo(db: Session, device: Device, records: list[dict]) -> int:
             db.flush()
             created += 1
 
-        db.add(
-            EmployeeDevice(
-                company_id=company_id,
-                employee_id=str(employee.id),
-                device_id=device_id,
-                device_user_id=pin,
+        mapping = db.scalar(
+            select(EmployeeDevice).where(
+                EmployeeDevice.company_id == company_id,
+                EmployeeDevice.device_id == device_id,
+                EmployeeDevice.device_user_id == pin,
             )
         )
+        if mapping is None:
+            db.add(
+                EmployeeDevice(
+                    company_id=company_id,
+                    employee_id=str(employee.id),
+                    device_id=device_id,
+                    device_user_id=pin,
+                )
+            )
     db.commit()
-    logger.info("iclock USERINFO SN=%s: users=%d new_employees=%d", device.serial_number, len(records), created)
+    logger.info("iclock USERINFO SN=%s: users=%d new_employees=%d", device.serial_number, len(users), created)
     return created
 
 
@@ -343,18 +359,18 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
         logger.warning("iclock push from unknown device SN=%s", serial)
         return PlainTextResponse("Error: device not registered", status_code=403)
 
-    if table in ("USERINFO", "USER", "OPERLOG"):
-        if table == "USERINFO":
-            _ingest_userinfo(db, device, _canonical_records(records))
-        return PlainTextResponse("OK")
-
     records = _canonical_records(records)
+
+    user_records, punch_records = _split_user_and_punch(records)
+    if user_records:
+        _create_employees_from_users(db, device, user_records)
+
     company_id = str(device.company_id)
     company_tz = get_zone(_company_timezone(db, company_id))
 
     inserted = duplicates = failed = 0
     last_type: dict[str, Optional[EventType]] = {}
-    for record in records:
+    for record in punch_records:
         device_user_id = str(record.get("USERID") or "").strip()
         time_value = record.get("CHECKTIME") or record.get("TIME") or record.get("DATETIME")
         naive_ts = _parse_timestamp(time_value) if time_value else None
@@ -394,12 +410,13 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
     device.status = DeviceStatus.ONLINE
     db.commit()
     logger.info(
-        "iclock push SN=%s: received=%d inserted=%d dup=%d failed=%d",
+        "iclock push SN=%s: received=%d inserted=%d dup=%d failed=%d users=%d",
         serial,
-        len(records),
+        len(punch_records),
         inserted,
         duplicates,
         failed,
+        len(user_records),
     )
     return PlainTextResponse("OK")
 

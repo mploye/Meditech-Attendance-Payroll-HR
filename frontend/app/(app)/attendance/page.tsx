@@ -330,9 +330,9 @@ export default function AttendancePage() {
                     <th className="px-5 py-3 font-medium">Employee</th>
                     <th className="px-5 py-3 font-medium">Status</th>
                     <th className="px-5 py-3 font-medium">In</th>
+                    <th className="px-5 py-3 font-medium">Break</th>
                     <th className="px-5 py-3 font-medium">Out</th>
                     <th className="px-5 py-3 font-medium">Total Hours</th>
-                    <th className="px-5 py-3 font-medium">Break</th>
                     <th className="px-5 py-3 font-medium">Late</th>
                     <th className="px-5 py-3 font-medium">OT</th>
                     <th className="px-5 py-3 font-medium"></th>
@@ -359,8 +359,6 @@ export default function AttendancePage() {
                             <Badge tone={statusTone(r.status)}>{r.status}</Badge>
                           </td>
                           <td data-label="In" className="px-5 py-3 font-medium text-green-700">{hhmm(r.first_in)}</td>
-                          <td data-label="Out" className="px-5 py-3 font-medium text-neutral-700">{hhmm(r.last_out)}</td>
-                          <td data-label="Total Hours" className="px-5 py-3 font-medium text-blue-700">{hours(r.worked_minutes)}</td>
                           <td data-label="Break" className="px-5 py-3 text-neutral-500">
                             {breakCount ? (
                               <button
@@ -373,6 +371,8 @@ export default function AttendancePage() {
                               "—"
                             )}
                           </td>
+                          <td data-label="Out" className="px-5 py-3 font-medium text-neutral-700">{hhmm(r.last_out)}</td>
+                          <td data-label="Total Hours" className="px-5 py-3 font-medium text-blue-700">{hours(r.worked_minutes)}</td>
                           <td data-label="Late" className="px-5 py-3 text-red-600">{r.late_minutes ? `${r.late_minutes}m` : "—"}</td>
                           <td data-label="OT" className="px-5 py-3 text-purple-600">{r.overtime_minutes ? `${r.overtime_minutes}m` : "—"}</td>
                           <td data-label="" className="px-5 py-3">

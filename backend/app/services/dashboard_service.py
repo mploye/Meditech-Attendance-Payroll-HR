@@ -260,6 +260,153 @@ def department_attendance(
     return [buckets[k] for k in sorted(buckets)]
 
 
+def metric_detail(db: Session, company_id: str, metric: str, day: date) -> dict:
+    """Return the employee list behind a dashboard metric card.
+
+    Powers clickable dashboard cards: selecting "Present Today" shows who was
+    present, "Absent Today" who was absent, "Late Today" who arrived late,
+    "On Leave" who is on approved leave, and "Pending Leaves" which requests
+    await approval.
+    """
+    def emp_rows(pairs: list[tuple[Employee, AttendanceDaily]]) -> list[dict]:
+        out = []
+        for emp, rec in pairs:
+            out.append(
+                {
+                    "employee_id": str(emp.id),
+                    "employee_code": emp.employee_code,
+                    "name": f"{emp.first_name} {emp.last_name or ''}".strip(),
+                    "status": rec.status.value if rec else None,
+                    "first_in": rec.first_in.isoformat() if rec and rec.first_in else None,
+                    "last_out": rec.last_out.isoformat() if rec and rec.last_out else None,
+                    "worked_minutes": rec.worked_minutes if rec else None,
+                    "late_minutes": rec.late_minutes if rec else None,
+                    "overtime_minutes": rec.overtime_minutes if rec else None,
+                }
+            )
+        return out
+
+    if metric in ("present_today", "absent_today", "late_today"):
+        stmt = (
+            select(Employee, AttendanceDaily)
+            .join(AttendanceDaily, AttendanceDaily.employee_id == Employee.id)
+            .where(
+                AttendanceDaily.company_id == company_id,
+                AttendanceDaily.attendance_date == day,
+            )
+        )
+        if metric == "present_today":
+            stmt = stmt.where(AttendanceDaily.status == AttendanceStatus.PRESENT)
+        elif metric == "absent_today":
+            stmt = stmt.where(AttendanceDaily.status == AttendanceStatus.ABSENT)
+        else:
+            stmt = stmt.where(AttendanceDaily.late_minutes > 0)
+        pairs = list(db.execute(stmt.order_by(Employee.employee_code)).all())
+        rows = emp_rows(pairs)
+        return {"metric": metric, "date": day.isoformat(), "count": len(rows), "items": rows}
+
+    if metric in ("on_leave", "pending_leaves"):
+        stmt = (
+            select(LeaveRequest, Employee)
+            .join(Employee, Employee.id == LeaveRequest.employee_id)
+            .where(LeaveRequest.company_id == company_id)
+        )
+        if metric == "on_leave":
+            stmt = stmt.where(
+                LeaveRequest.status == LeaveStatus.APPROVED,
+                LeaveRequest.start_date <= day,
+                LeaveRequest.end_date >= day,
+            )
+        else:
+            stmt = stmt.where(LeaveRequest.status == LeaveStatus.PENDING)
+        rows = []
+        for req, emp in db.execute(stmt.order_by(LeaveRequest.start_date)).all():
+            rows.append(
+                {
+                    "employee_id": str(emp.id),
+                    "employee_code": emp.employee_code,
+                    "name": f"{emp.first_name} {emp.last_name or ''}".strip(),
+                    "start_date": req.start_date.isoformat(),
+                    "end_date": req.end_date.isoformat(),
+                    "days": float(req.days or 0),
+                    "status": req.status.value,
+                    "reason": req.reason,
+                }
+            )
+        return {"metric": metric, "date": day.isoformat(), "count": len(rows), "items": rows}
+
+    if metric == "overtime_employees":
+        stmt = (
+            select(Employee)
+            .join(OvertimeRecord, OvertimeRecord.employee_id == Employee.id)
+            .where(
+                OvertimeRecord.company_id == company_id,
+                OvertimeRecord.date == day,
+                OvertimeRecord.status.in_([OvertimeStatus.PENDING, OvertimeStatus.APPROVED]),
+            )
+        )
+        rows = [
+            {
+                "employee_id": str(emp.id),
+                "employee_code": emp.employee_code,
+                "name": f"{emp.first_name} {emp.last_name or ''}".strip(),
+            }
+            for emp in db.scalars(stmt.order_by(Employee.employee_code))
+        ]
+        return {"metric": metric, "date": day.isoformat(), "count": len(rows), "items": rows}
+
+    if metric == "total_employees":
+        rows = [
+            {
+                "employee_id": str(emp.id),
+                "employee_code": emp.employee_code,
+                "name": f"{emp.first_name} {emp.last_name or ''}".strip(),
+                "department": emp.department.name if emp.department else None,
+                "joining_date": emp.joining_date.isoformat() if emp.joining_date else None,
+            }
+            for emp in db.scalars(
+                select(Employee)
+                .where(
+                    Employee.company_id == company_id,
+                    Employee.status == EmployeeStatus.ACTIVE,
+                )
+                .order_by(Employee.employee_code)
+            )
+        ]
+        return {"metric": metric, "date": day.isoformat(), "count": len(rows), "items": rows}
+
+    if metric == "pending_payroll":
+        periods = list(
+            db.scalars(
+                select(PayrollPeriod)
+                .where(
+                    PayrollPeriod.company_id == company_id,
+                    PayrollPeriod.status.in_(
+                        [
+                            PayrollPeriodStatus.DRAFT,
+                            PayrollPeriodStatus.CALCULATING,
+                            PayrollPeriodStatus.REVIEW,
+                        ]
+                    ),
+                )
+                .order_by(PayrollPeriod.year.desc(), PayrollPeriod.month.desc())
+            )
+        )
+        items = [
+            {
+                "period": f"{p.year}-{p.month:02d}",
+                "start_date": p.start_date.isoformat(),
+                "end_date": p.end_date.isoformat(),
+                "status": p.status.value,
+                "period_id": str(p.id),
+            }
+            for p in periods
+        ]
+        return {"metric": metric, "date": day.isoformat(), "count": len(items), "items": items}
+
+    return {"metric": metric, "date": day.isoformat(), "count": 0, "items": []}
+
+
 def employee_growth(db: Session, company_id: str, months: int = 6) -> list:
     """Return monthly joiner counts and cumulative headcount for the trailing N months."""
     pairs = _latest_monthends(months, date.today())

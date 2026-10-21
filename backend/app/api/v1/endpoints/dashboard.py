@@ -26,6 +26,20 @@ def summary(
     return success_response(dashboard_service.summary(db, cid, day or _today()))
 
 
+@router.get("/metric-detail")
+def metric_detail(
+    metric: str,
+    day: Optional[date] = None,
+    user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    ensure_perm(user, "dashboard.view")
+    cid = resolve_company_id(user)
+    return success_response(
+        dashboard_service.metric_detail(db, cid, metric, day or _today())
+    )
+
+
 @router.get("/attendance-trend")
 def attendance_trend(
     days: int = Query(14, ge=1, le=90),

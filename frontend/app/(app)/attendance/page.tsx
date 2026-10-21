@@ -109,7 +109,10 @@ function mins(value?: number): string {
 
 function breakLabel(b: BreakSeg): string {
   if (b.name) return b.name;
-  return b.break_type === "RESTROOM" ? "Restroom" : b.break_type === "SCHEDULED" ? "Scheduled" : b.break_type;
+  if (b.break_type === "RESTROOM") return "Restroom";
+  if (b.break_type === "SCHEDULED") return "Scheduled";
+  if (b.break_type === "PUNCHED") return "Punch break";
+  return b.break_type;
 }
 
 function punchLabel(p: Punch): string {

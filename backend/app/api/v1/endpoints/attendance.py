@@ -57,15 +57,15 @@ def daily_attendance(
         d["employee_name"] = f"{emp.first_name} {emp.last_name or ''}" if emp else None
         d["department_id"] = str(emp.department_id) if emp and emp.department_id else None
         d["punches"] = _punch_sequence(db, cid, row.employee_id, target)
-        d["breaks"] = break_service.list_day(db, cid, target, str(row.employee_id))
+        logged = break_service.list_day(db, cid, target, str(row.employee_id))
+        d["breaks"] = logged if logged else _derived_breaks(db, cid, row.employee_id, target)
         items.append(d)
     return success_response(
         {"items": items, "total": total, "page": page, "page_size": page_size, "pages": pages}
     )
 
 
-def _punch_sequence(db, cid: str, employee_id: str, day: date) -> list[dict]:
-    """Ordered IN/OUT punches for an employee on a day (powers the detail view)."""
+def _day_logs(db, cid: str, employee_id: str, day: date) -> list[AttendanceLog]:
     from sqlalchemy import select as sa_select
 
     from core.timezone import get_zone
@@ -73,7 +73,7 @@ def _punch_sequence(db, cid: str, employee_id: str, day: date) -> list[dict]:
     zone = get_zone(_company_tz(db, cid))
     start = datetime.combine(day, datetime.min.time(), tzinfo=zone).astimezone(timezone.utc)
     end = start + timedelta(days=1)
-    logs = list(
+    return list(
         db.scalars(
             sa_select(AttendanceLog)
             .where(
@@ -85,14 +85,28 @@ def _punch_sequence(db, cid: str, employee_id: str, day: date) -> list[dict]:
             .order_by(AttendanceLog.event_timestamp)
         )
     )
+
+
+def _punch_sequence(db, cid: str, employee_id: str, day: date) -> list[dict]:
+    """Ordered IN/OUT punches for an employee on a day (powers the detail view).
+
+    Uses the alternating effective sequence so devices configured in
+    "check-in only" mode still show IN/OUT pairs.
+    """
+    logs = _day_logs(db, cid, employee_id, day)
     return [
         {
             "time": log.event_timestamp.isoformat(),
-            "event_type": log.event_type.value if hasattr(log.event_type, "value") else str(log.event_type),
+            "event_type": eff.value,
             "source": log.source.value if hasattr(log.source, "value") else str(log.source),
         }
-        for log in logs
+        for log, eff in attendance_service.effective_punch_sequence(logs)
     ]
+
+
+def _derived_breaks(db, cid: str, employee_id: str, day: date) -> list[dict]:
+    """Break segments inferred from mid-day OUT -> IN gaps in the punch stream."""
+    return attendance_service.break_segments(_day_logs(db, cid, employee_id, day))
 
 
 @router.get("/range-summary")

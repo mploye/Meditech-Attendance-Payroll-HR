@@ -279,6 +279,31 @@ def _upsert_daily(
     return record
 
 
+def effective_punch_sequence(logs: list[AttendanceLog]) -> list[tuple[AttendanceLog, EventType]]:
+    """Return the day's punches as an alternating IN/OUT sequence.
+
+    Some eSSL/ZKTeco devices are configured in "check-in only" mode and report
+    every punch with status 0 (IN). When that happens the raw ``event_type`` is
+    useless for building IN/OUT or break segments. We therefore derive the
+    effective type by walking punches in time order: the first punch is IN, and
+    each subsequent punch flips to the opposite of the previous effective type
+    (so a mid-day OUT followed by an IN is seen as a break).
+    """
+    ordered = sorted(logs, key=lambda log: _normalize_ts(log.event_timestamp))
+    out: list[tuple[AttendanceLog, EventType]] = []
+    prev: Optional[EventType] = None
+    for log in ordered:
+        if prev is None:
+            eff = EventType.IN
+        elif prev == EventType.IN:
+            eff = EventType.OUT
+        else:
+            eff = EventType.IN
+        out.append((log, eff))
+        prev = eff
+    return out
+
+
 def _punched_break_minutes(logs: list[AttendanceLog]) -> int:
     """Sum of mid-day OUT->IN gaps from a raw punch sequence.
 
@@ -287,23 +312,62 @@ def _punched_break_minutes(logs: list[AttendanceLog]) -> int:
     counted as break time; this powers multi-break days (tea / lunch / restroom)
     without requiring employees to log breaks in the UI.
     """
-    ordered = sorted(logs, key=lambda log: _normalize_ts(log.event_timestamp))
+    sequence = effective_punch_sequence(logs)
     total = 0
-    prev: Optional[AttendanceLog] = None
-    for log in ordered:
-        if (
-            prev is not None
-            and prev.event_type == EventType.OUT
-            and log.event_type in (EventType.IN, EventType.UNKNOWN)
-        ):
+    prev = None
+    for log, eff in sequence:
+        if prev is not None and prev[1] == EventType.OUT and eff == EventType.IN:
             gap = int(
-                (_normalize_ts(log.event_timestamp) - _normalize_ts(prev.event_timestamp)).total_seconds()
+                (_normalize_ts(log.event_timestamp) - _normalize_ts(prev[0].event_timestamp)).total_seconds()
                 // 60
             )
             if gap > 0:
                 total += gap
-        prev = log
+        prev = (log, eff)
     return total
+
+
+def break_segments(logs: list[AttendanceLog]) -> list[dict]:
+    """Derive break segments (OUT -> IN gaps) from the alternating punch sequence."""
+    sequence = effective_punch_sequence(logs)
+    segments: list[dict] = []
+    pending = None
+    for log, eff in sequence:
+        if eff == EventType.OUT:
+            pending = log
+        elif eff == EventType.IN and pending is not None:
+            gap = int(
+                (_normalize_ts(log.event_timestamp) - _normalize_ts(pending.event_timestamp)).total_seconds()
+                // 60
+            )
+            if gap > 0:
+                segments.append(
+                    {
+                        "id": f"{pending.id}-{log.id}",
+                        "name": None,
+                        "break_type": "PUNCHED",
+                        "start_time": _normalize_ts(pending.event_timestamp).isoformat(),
+                        "end_time": _normalize_ts(log.event_timestamp).isoformat(),
+                        "duration_minutes": gap,
+                        "is_paid": True,
+                        "status": "COMPLETED",
+                    }
+                )
+            pending = None
+    if pending is not None:
+        segments.append(
+            {
+                "id": f"{pending.id}-open",
+                "name": None,
+                "break_type": "PUNCHED",
+                "start_time": _normalize_ts(pending.event_timestamp).isoformat(),
+                "end_time": None,
+                "duration_minutes": None,
+                "is_paid": True,
+                "status": "ACTIVE",
+            }
+        )
+    return segments
 
 
 def process_day(
@@ -314,7 +378,8 @@ def process_day(
     logs = _logs_on_day(db, company_id, employee_id, day, tz)
     shift = shift_service.get_employee_shift(db, company_id, employee_id, day)
 
-    in_candidates = [log for log in logs if log.event_type in (EventType.IN, EventType.UNKNOWN)]
+    sequence = effective_punch_sequence(logs)
+    in_candidates = [log for log, eff in sequence if eff == EventType.IN]
     first_in = min((_normalize_ts(log.event_timestamp) for log in in_candidates), default=None)
     last_out = max((_normalize_ts(log.event_timestamp) for log in logs), default=None)
 

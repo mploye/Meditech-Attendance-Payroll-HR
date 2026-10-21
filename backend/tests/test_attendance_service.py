@@ -186,3 +186,29 @@ def test_range_summary_includes_employee_with_no_records(db, ctx):
     assert rows[0]["present_days"] == 0
     assert rows[0]["worked_minutes"] == 0
     assert rows[0]["total_days"] == 0
+
+
+def test_check_in_only_device_derives_out_and_breaks(db, ctx):
+    # Device in "check-in only" mode sends every punch as IN. The alternating
+    # effective sequence must still yield OUT punches and break segments.
+    for hh, mm in [(6, 20), (10, 13), (10, 29), (12, 49), (13, 7)]:
+        attendance_service.insert_raw_log(
+            db,
+            company_id=ctx["company_id"],
+            device_id=None,
+            employee_id=ctx["employee_id"],
+            device_user_id="A001",
+            event_timestamp=_ts(hh, mm),
+            event_type=EventType.IN,
+            source=LogSource.DEVICE,
+        )
+    logs = attendance_service._logs_on_day(
+        db, ctx["company_id"], ctx["employee_id"], DAY, "Asia/Kolkata"
+    )
+    seq = attendance_service.effective_punch_sequence(logs)
+    assert [e.value for _, e in seq] == ["IN", "OUT", "IN", "OUT", "IN"]
+    segs = attendance_service.break_segments(logs)
+    assert [s["duration_minutes"] for s in segs] == [16, 18]
+    rec = attendance_service.process_day(db, ctx["company_id"], ctx["employee_id"], DAY)
+    assert rec.break_minutes == 34
+    assert rec.status == AttendanceStatus.MISSING_PUNCH

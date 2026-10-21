@@ -136,6 +136,7 @@ export default function AttendancePage() {
   const [lastUpdated, setLastUpdated] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [mobileIndex, setMobileIndex] = useState(0);
 
   const activeRange = useMemo((): { from: string; to: string } => {
     if (tab === "daily") return { from: date, to: date };
@@ -323,7 +324,13 @@ export default function AttendancePage() {
           {rows.length === 0 ? (
             <Empty text={loading ? "Loading…" : "No daily records — punches sync automatically"} />
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              <MobileEmployeePager
+                rows={rows}
+                index={Math.min(mobileIndex, rows.length - 1)}
+                onIndex={(i) => setMobileIndex(i)}
+              />
+              <div className="hidden overflow-x-auto md:block">
               <table className="mobile-stack w-full text-left text-sm">
                 <thead className="border-b border-neutral-100 text-xs uppercase text-neutral-400">
                   <tr>
@@ -456,7 +463,8 @@ export default function AttendancePage() {
                   })}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           )}
         </Card>
       ) : (
@@ -524,6 +532,119 @@ export default function AttendancePage() {
           )}
         </Card>
       )}
+    </div>
+  );
+}
+
+function MobileEmployeePager({
+  rows,
+  index,
+  onIndex,
+}: {
+  rows: DailyRow[];
+  index: number;
+  onIndex: (i: number) => void;
+}) {
+  const r = rows[index];
+  if (!r) return null;
+  const breakCount = r.breaks?.length ?? 0;
+  const punches = r.punches || [];
+  const isIn = punches.filter((p) => punchLabel(p) === "IN").length;
+  const canPrev = index > 0;
+  const canNext = index < rows.length - 1;
+  const name = r.employee_name || `${r.first_name || ""} ${r.last_name || ""}`.trim() || r.employee_id;
+
+  return (
+    <div className="md:hidden">
+      <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
+        <Button variant="secondary" onClick={() => canPrev && onIndex(index - 1)} disabled={!canPrev}>
+          ‹ Prev
+        </Button>
+        <span className="text-xs font-medium text-neutral-400">
+          {index + 1} of {rows.length}
+        </span>
+        <Button variant="secondary" onClick={() => canNext && onIndex(index + 1)} disabled={!canNext}>
+          Next ›
+        </Button>
+      </div>
+
+      <div className="px-4 py-4">
+        <div className="mb-3 flex items-start justify-between">
+          <div>
+            <div className="text-base font-semibold text-neutral-900">{name}</div>
+            {r.employee_code ? <div className="text-xs text-neutral-400">{r.employee_code}</div> : null}
+          </div>
+          <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          <MiniStat label="In" value={hhmm(r.first_in)} tone="text-green-700" />
+          <MiniStat label="Break" value={breakCount ? mins(r.break_minutes) : "—"} tone="text-amber-700" />
+          <MiniStat label="Out" value={hhmm(r.last_out)} tone="text-neutral-700" />
+          <MiniStat label="Total Hours" value={hours(r.worked_minutes)} tone="text-blue-700" />
+          <MiniStat label="Late" value={r.late_minutes ? `${r.late_minutes}m` : "—"} tone="text-red-600" />
+          <MiniStat label="OT" value={r.overtime_minutes ? `${r.overtime_minutes}m` : "—"} tone="text-purple-600" />
+        </div>
+
+        <div className="mt-4">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Punch sequence ({isIn} IN · {punches.length - isIn} OUT)
+          </div>
+          {punches.length === 0 ? (
+            <div className="text-sm text-neutral-400">No raw punches recorded</div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {punches.map((p, i) => {
+                const label = punchLabel(p);
+                return (
+                  <span
+                    key={i}
+                    className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ${
+                      label === "IN" ? "bg-green-50 text-green-700" : "bg-neutral-100 text-neutral-600"
+                    }`}
+                  >
+                    <span className="opacity-70">{label}</span>
+                    {hhmm(p.time)}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Breaks ({breakCount})
+          </div>
+          {breakCount === 0 ? (
+            <div className="text-sm text-neutral-400">No breaks recorded</div>
+          ) : (
+            <div className="space-y-1.5">
+              {(r.breaks || []).map((b) => (
+                <div
+                  key={b.id}
+                  className="flex items-center justify-between rounded-md bg-neutral-50 px-3 py-2 text-xs"
+                >
+                  <span className="font-medium text-neutral-700">{breakLabel(b)}</span>
+                  <span className="text-neutral-500">
+                    {hhmm(b.start_time)} → {hhmm(b.end_time)}
+                  </span>
+                  <span className="text-neutral-500">{mins(b.duration_minutes)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value, tone }: { label: string; value: string; tone: string }) {
+  return (
+    <div className="rounded-lg bg-neutral-50 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wide text-neutral-400">{label}</div>
+      <div className={`text-sm font-semibold ${tone}`}>{value}</div>
     </div>
   );
 }

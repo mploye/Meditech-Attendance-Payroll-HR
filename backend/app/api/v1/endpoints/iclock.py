@@ -299,18 +299,24 @@ def _create_employees_from_users(db: Session, device: Device, users: list[dict])
     return created
 
 
-def _option_response(sn: str) -> str:
+def _option_response(sn: str, stamp: str = "0", op_stamp: str = "0") -> str:
     """ZKTeco/eSSL ADMS registration/config handshake reply.
 
     The device calls ``GET /iclock/cdata.aspx?SN=...&options=all&pushver=...``
     on connect. It will NOT upload punches until it receives a ``GET OPTION
     FROM: <sn>`` block. ``Realtime=1`` enables instant push; the ``Trans*``
     values make it report attendance immediately.
+
+    ``Stamp``/``OpStamp`` are the server's acknowledged cursors. Returning a
+    value LOWER than the device's own cursor forces it to re-upload records
+    after that point; returning ``0`` requests a full resend. We default to 0
+    so a device that has drifted to the ``9999`` "synced" sentinel re-pushes
+    its whole attendance log on the next handshake.
     """
     lines = [
         f"GET OPTION FROM: {sn}",
-        "Stamp=0",
-        "OpStamp=0",
+        f"Stamp={stamp}",
+        f"OpStamp={op_stamp}",
         "ErrorDelay=30",
         "Delay=10",
         "TransTimes=00:00;14:05",

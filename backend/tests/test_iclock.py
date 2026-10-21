@@ -161,6 +161,24 @@ def test_cdata_get_returns_option_block(client):
     assert r.status_code == 200
     assert r.text.startswith("GET OPTION FROM: ORCUS123")
     assert "Realtime=1" in r.text
+    assert "Stamp=0" in r.text
+    assert "OpStamp=0" in r.text
+
+
+def test_option_response_forces_full_resend_by_default():
+    from api.v1.endpoints.iclock import _option_response
+
+    text = _option_response("ORCUS123")
+    assert "Stamp=0" in text
+    assert "OpStamp=0" in text
+
+
+def test_resync_command_is_queued_for_serial():
+    from api.v1.endpoints.iclock import _pop_command, queue_command
+
+    queue_command("ORCUS123", "DATA UPDATE ATTLOG")
+    assert _pop_command("ORCUS123") == "DATA UPDATE ATTLOG"
+    assert _pop_command("ORCUS123") is None
 
 
 def test_cdata_unknown_device_rejected(client):

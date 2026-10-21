@@ -117,8 +117,16 @@ def pull_data(device_id: str, body: dict | None = None, user: User = Depends(get
     end = body.get("end")
     want_users = bool(body.get("users", True))
     want_attendance = bool(body.get("attendance", True))
+    resync = bool(body.get("resync", False))
 
     queued: list[str] = []
+    if resync:
+        # ZKTeco/eSSL: DATA UPDATE ATTLOG re-marks every stored attendance
+        # record as "not yet uploaded", forcing the device to re-push its
+        # entire log on the next sync even when its local Stamp is 9999.
+        cmd = "DATA UPDATE ATTLOG"
+        queue_command(device.serial_number, cmd)
+        queued.append(cmd)
     if want_users:
         cmd = "DATA QUERY USERINFO"
         queue_command(device.serial_number, cmd)

@@ -65,18 +65,6 @@ const CLICKABLE = new Set<keyof Summary>([
   "pending_payroll",
 ]);
 
-function hhmm(value?: string | null): string {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value).slice(11, 16);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
-}
-
-function hoursOf(minutes?: number | null): string {
-  if (!minutes) return "—";
-  return (minutes / 60).toFixed(1) + "h";
-}
-
 export default function DashboardPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [trend, setTrend] = useState<{ date: string; present: number }[]>([]);
@@ -187,117 +175,69 @@ export default function DashboardPage() {
       </div>
 
       {selected ? (
-        <Card className="mt-6">
-          <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-4">
-            <div>
-              <h3 className="text-sm font-semibold text-neutral-800">
-                {METRIC_LABELS.find((m) => m.key === selected)?.label}
-                {detail ? <span className="ml-2 text-neutral-400">({detail.count})</span> : null}
-              </h3>
-              {detail ? <p className="text-[11px] text-neutral-400">As of {detail.date}</p> : null}
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => {
+            setSelected(null);
+            setDetail(null);
+          }}
+        >
+          <div
+            className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-4">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-800">
+                  {METRIC_LABELS.find((m) => m.key === selected)?.label}
+                  {detail ? <span className="ml-2 text-neutral-400">({detail.count})</span> : null}
+                </h3>
+                {detail ? <p className="text-[11px] text-neutral-400">As of {detail.date}</p> : null}
+              </div>
+              <button
+                onClick={() => {
+                  setSelected(null);
+                  setDetail(null);
+                }}
+                className="rounded-md px-2 py-1 text-lg leading-none text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                aria-label="Close"
+              >
+                ×
+              </button>
             </div>
-            <button
-              onClick={() => {
-                setSelected(null);
-                setDetail(null);
-              }}
-              className="text-sm text-neutral-400 hover:text-neutral-700"
-            >
-              Close
-            </button>
-          </div>
-          {detailLoading ? (
-            <Empty text="Loading…" />
-          ) : !detail || detail.items.length === 0 ? (
-            <Empty text="No records for this card" />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="mobile-stack w-full text-left text-sm">
-                <thead className="border-b border-neutral-100 text-xs uppercase text-neutral-400">
-                  <tr>
-                    <th className="px-5 py-3 font-medium">Employee</th>
-                    {selected === "on_leave" || selected === "pending_leaves" ? (
-                      <>
-                        <th className="px-5 py-3 font-medium">From</th>
-                        <th className="px-5 py-3 font-medium">To</th>
-                        <th className="px-5 py-3 font-medium">Days</th>
-                        <th className="px-5 py-3 font-medium">Status</th>
-                        <th className="px-5 py-3 font-medium">Reason</th>
-                      </>
-                    ) : selected === "pending_payroll" ? (
-                      <>
-                        <th className="px-5 py-3 font-medium">Period</th>
-                        <th className="px-5 py-3 font-medium">Status</th>
-                      </>
-                    ) : selected === "total_employees" ? (
-                      <>
-                        <th className="px-5 py-3 font-medium">Department</th>
-                        <th className="px-5 py-3 font-medium">Joined</th>
-                      </>
-                    ) : (
-                      <>
-                        <th className="px-5 py-3 font-medium">In</th>
-                        <th className="px-5 py-3 font-medium">Out</th>
-                        <th className="px-5 py-3 font-medium">Hours</th>
-                        <th className="px-5 py-3 font-medium">Late</th>
-                        <th className="px-5 py-3 font-medium">OT</th>
-                      </>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-100">
+
+            <div className="max-h-[65vh] overflow-y-auto px-3 py-3">
+              {detailLoading ? (
+                <Empty text="Loading…" />
+              ) : !detail || detail.items.length === 0 ? (
+                <Empty text="No records for this card" />
+              ) : (
+                <ul className="divide-y divide-neutral-100">
                   {detail.items.map((r, i) => (
-                    <tr key={r.employee_id || r.period || i} className="hover:bg-neutral-50">
-                      <td data-label="Employee" className="px-5 py-3">
-                        {r.employee_code || r.period ? (
-                          <>
-                            <div className="font-medium text-neutral-800">{r.name || r.period}</div>
-                            {r.employee_code ? (
-                              <div className="text-xs text-neutral-400">{r.employee_code}</div>
-                            ) : null}
-                          </>
-                        ) : (
-                          <span className="text-neutral-400">—</span>
-                        )}
-                      </td>
-                      {selected === "on_leave" || selected === "pending_leaves" ? (
-                        <>
-                          <td data-label="From" className="px-5 py-3 text-neutral-600">{r.start_date}</td>
-                          <td data-label="To" className="px-5 py-3 text-neutral-600">{r.end_date}</td>
-                          <td data-label="Days" className="px-5 py-3 text-neutral-600">{r.days}</td>
-                          <td data-label="Status" className="px-5 py-3 text-neutral-600">{r.status}</td>
-                          <td data-label="Reason" className="px-5 py-3 text-neutral-500">{r.reason || "—"}</td>
-                        </>
-                      ) : selected === "pending_payroll" ? (
-                        <>
-                          <td data-label="Period" className="px-5 py-3 text-neutral-600">{r.period}</td>
-                          <td data-label="Status" className="px-5 py-3 text-neutral-600">{r.status}</td>
-                        </>
-                      ) : selected === "total_employees" ? (
-                        <>
-                          <td data-label="Department" className="px-5 py-3 text-neutral-500">{r.department || "—"}</td>
-                          <td data-label="Joined" className="px-5 py-3 text-neutral-500">{r.joining_date || "—"}</td>
-                        </>
-                      ) : (
-                        <>
-                          <td data-label="In" className="px-5 py-3 text-green-700">{hhmm(r.first_in)}</td>
-                          <td data-label="Out" className="px-5 py-3 text-neutral-700">{hhmm(r.last_out)}</td>
-                          <td data-label="Hours" className="px-5 py-3 text-blue-700">{hoursOf(r.worked_minutes)}</td>
-                          <td data-label="Late" className="px-5 py-3 text-red-600">
-                            {r.late_minutes ? `${r.late_minutes}m` : "—"}
-                          </td>
-                          <td data-label="OT" className="px-5 py-3 text-purple-600">
-                            {r.overtime_minutes ? `${r.overtime_minutes}m` : "—"}
-                          </td>
-                        </>
-                      )}
-                    </tr>
+                    <li
+                      key={r.employee_id || r.period || i}
+                      className="flex items-center justify-between gap-3 px-2 py-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-neutral-800">
+                          {r.name || r.period || "—"}
+                        </div>
+                        {r.employee_code ? (
+                          <div className="text-xs text-neutral-400">{r.employee_code}</div>
+                        ) : null}
+                      </div>
+                      {selected === "late_today" ? (
+                        <span className="whitespace-nowrap rounded-md bg-red-50 px-2 py-1 text-xs font-semibold text-red-600">
+                          {r.late_minutes ? `${r.late_minutes} min` : "on time"}
+                        </span>
+                      ) : null}
+                    </li>
                   ))}
-                </tbody>
-              </table>
+                </ul>
+              )}
             </div>
-          )}
-        </Card>
+          </div>
+        </div>
       ) : null}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">

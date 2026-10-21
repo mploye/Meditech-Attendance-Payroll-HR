@@ -1,8 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { Alert, Badge, Button, Card, CardHeader, Empty, Input, PageHeader, statusTone } from "@/components/ui";
+
+type Punch = {
+  time: string;
+  event_type: string;
+  source?: string;
+};
+
+type BreakSeg = {
+  id: string;
+  name?: string;
+  break_type: string;
+  start_time?: string;
+  end_time?: string;
+  duration_minutes?: number;
+  is_paid?: boolean;
+  status: string;
+};
 
 type DailyRow = {
   id: string;
@@ -18,6 +35,9 @@ type DailyRow = {
   late_minutes?: number;
   overtime_minutes?: number;
   worked_minutes?: number;
+  break_minutes?: number;
+  punches?: Punch[];
+  breaks?: BreakSeg[];
 };
 
 type SummaryRow = {
@@ -80,6 +100,25 @@ function hhmm(value?: string): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
+function mins(value?: number): string {
+  if (!value) return "—";
+  const h = Math.floor(value / 60);
+  const m = value % 60;
+  return h ? `${h}h ${m}m` : `${m}m`;
+}
+
+function breakLabel(b: BreakSeg): string {
+  if (b.name) return b.name;
+  return b.break_type === "RESTROOM" ? "Restroom" : b.break_type === "SCHEDULED" ? "Scheduled" : b.break_type;
+}
+
+function punchLabel(p: Punch): string {
+  const t = (p.event_type || "").toUpperCase();
+  if (t.includes("IN")) return "IN";
+  if (t.includes("OUT")) return "OUT";
+  return t || "PUNCH";
+}
+
 const POLL_MS = 30000;
 
 export default function AttendancePage() {
@@ -93,6 +132,7 @@ export default function AttendancePage() {
   const [live, setLive] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const activeRange = useMemo((): { from: string; to: string } => {
     if (tab === "daily") return { from: date, to: date };
@@ -288,32 +328,129 @@ export default function AttendancePage() {
                     <th className="px-5 py-3 font-medium">Status</th>
                     <th className="px-5 py-3 font-medium">In</th>
                     <th className="px-5 py-3 font-medium">Out</th>
-                    <th className="px-5 py-3 font-medium">Hours</th>
+                    <th className="px-5 py-3 font-medium">Total Hours</th>
+                    <th className="px-5 py-3 font-medium">Break</th>
                     <th className="px-5 py-3 font-medium">Late</th>
                     <th className="px-5 py-3 font-medium">OT</th>
+                    <th className="px-5 py-3 font-medium"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
-                  {rows.map((r) => (
-                    <tr key={r.id} className="hover:bg-neutral-50">
-                      <td data-label="Employee" className="px-5 py-3">
-                        <div className="font-medium text-neutral-800">
-                          {r.employee_name || `${r.first_name || ""} ${r.last_name || ""}`.trim() || r.employee_id}
-                        </div>
-                        {r.employee_code ? (
-                          <div className="text-xs text-neutral-400">{r.employee_code}</div>
+                  {rows.map((r) => {
+                    const isOpen = !!expanded[r.id];
+                    const breakCount = r.breaks?.length ?? 0;
+                    const isIn = (r.punches || [])
+                      .filter((p) => punchLabel(p) === "IN").length;
+                    return (
+                      <Fragment key={r.id}>
+                        <tr className="hover:bg-neutral-50">
+                          <td data-label="Employee" className="px-5 py-3">
+                            <div className="font-medium text-neutral-800">
+                              {r.employee_name || `${r.first_name || ""} ${r.last_name || ""}`.trim() || r.employee_id}
+                            </div>
+                            {r.employee_code ? (
+                              <div className="text-xs text-neutral-400">{r.employee_code}</div>
+                            ) : null}
+                          </td>
+                          <td data-label="Status" className="px-5 py-3">
+                            <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+                          </td>
+                          <td data-label="In" className="px-5 py-3 font-medium text-green-700">{hhmm(r.first_in)}</td>
+                          <td data-label="Out" className="px-5 py-3 font-medium text-neutral-700">{hhmm(r.last_out)}</td>
+                          <td data-label="Total Hours" className="px-5 py-3 font-medium text-blue-700">{hours(r.worked_minutes)}</td>
+                          <td data-label="Break" className="px-5 py-3 text-neutral-500">
+                            {breakCount ? (
+                              <button
+                                onClick={() => setExpanded((s) => ({ ...s, [r.id]: !isOpen }))}
+                                className="rounded bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
+                              >
+                                {mins(r.break_minutes)} · {breakCount}
+                              </button>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td data-label="Late" className="px-5 py-3 text-red-600">{r.late_minutes ? `${r.late_minutes}m` : "—"}</td>
+                          <td data-label="OT" className="px-5 py-3 text-purple-600">{r.overtime_minutes ? `${r.overtime_minutes}m` : "—"}</td>
+                          <td data-label="" className="px-5 py-3">
+                            <Button variant="secondary" onClick={() => setExpanded((s) => ({ ...s, [r.id]: !isOpen }))}>
+                              {isOpen ? "Hide" : "Detail"}
+                            </Button>
+                          </td>
+                        </tr>
+                        {isOpen ? (
+                          <tr className="bg-neutral-50/60">
+                            <td colSpan={9} className="px-5 py-4">
+                              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                                <div>
+                                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                    Punch sequence ({isIn} IN · {(r.punches || []).length - isIn} OUT)
+                                  </div>
+                                  {(r.punches || []).length === 0 ? (
+                                    <div className="text-sm text-neutral-400">No raw punches recorded</div>
+                                  ) : (
+                                    <div className="flex flex-wrap gap-2">
+                                      {(r.punches || []).map((p, i) => {
+                                        const label = punchLabel(p);
+                                        return (
+                                          <span
+                                            key={i}
+                                            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ${
+                                              label === "IN"
+                                                ? "bg-green-50 text-green-700"
+                                                : "bg-neutral-100 text-neutral-600"
+                                            }`}
+                                          >
+                                            <span className="opacity-70">{label}</span>
+                                            {hhmm(p.time)}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                                <div>
+                                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                    Breaks ({breakCount})
+                                  </div>
+                                  {breakCount === 0 ? (
+                                    <div className="text-sm text-neutral-400">No breaks recorded</div>
+                                  ) : (
+                                    <table className="w-full text-left text-xs">
+                                      <thead className="text-neutral-400">
+                                        <tr>
+                                          <th className="py-1 font-medium">Type</th>
+                                          <th className="py-1 font-medium">Start</th>
+                                          <th className="py-1 font-medium">End</th>
+                                          <th className="py-1 font-medium">Duration</th>
+                                          <th className="py-1 font-medium">Status</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-neutral-100">
+                                        {(r.breaks || []).map((b) => (
+                                          <tr key={b.id}>
+                                            <td className="py-1.5 text-neutral-700">{breakLabel(b)}</td>
+                                            <td className="py-1.5 text-neutral-500">{hhmm(b.start_time)}</td>
+                                            <td className="py-1.5 text-neutral-500">{hhmm(b.end_time)}</td>
+                                            <td className="py-1.5 text-neutral-500">{mins(b.duration_minutes)}</td>
+                                            <td className="py-1.5">
+                                              <span className={b.status === "ACTIVE" ? "text-green-600" : "text-neutral-400"}>
+                                                {b.status}
+                                              </span>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
                         ) : null}
-                      </td>
-                      <td data-label="Status" className="px-5 py-3">
-                        <Badge tone={statusTone(r.status)}>{r.status}</Badge>
-                      </td>
-                      <td data-label="In" className="px-5 py-3 text-neutral-500">{hhmm(r.first_in)}</td>
-                      <td data-label="Out" className="px-5 py-3 text-neutral-500">{hhmm(r.last_out)}</td>
-                      <td data-label="Hours" className="px-5 py-3 text-neutral-500">{hours(r.worked_minutes)}</td>
-                      <td data-label="Late" className="px-5 py-3 text-neutral-500">{r.late_minutes ?? "—"}</td>
-                      <td data-label="OT" className="px-5 py-3 text-neutral-500">{r.overtime_minutes ?? "—"}</td>
-                    </tr>
-                  ))}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

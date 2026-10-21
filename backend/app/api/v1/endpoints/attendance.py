@@ -11,7 +11,7 @@ from models.attendance import AttendanceDaily, AttendanceLog
 from models.employee import Employee
 from models.enums import AttendanceStatus, EventType, LogSource
 from models.user import User
-from services import attendance_service, sync_service
+from services import attendance_service, break_service, sync_service
 
 router = APIRouter()
 
@@ -56,10 +56,43 @@ def daily_attendance(
         d["employee_code"] = emp.employee_code if emp else None
         d["employee_name"] = f"{emp.first_name} {emp.last_name or ''}" if emp else None
         d["department_id"] = str(emp.department_id) if emp and emp.department_id else None
+        d["punches"] = _punch_sequence(db, cid, row.employee_id, target)
+        d["breaks"] = break_service.list_day(db, cid, target, str(row.employee_id))
         items.append(d)
     return success_response(
         {"items": items, "total": total, "page": page, "page_size": page_size, "pages": pages}
     )
+
+
+def _punch_sequence(db, cid: str, employee_id: str, day: date) -> list[dict]:
+    """Ordered IN/OUT punches for an employee on a day (powers the detail view)."""
+    from sqlalchemy import select as sa_select
+
+    from core.timezone import get_zone
+
+    zone = get_zone(_company_tz(db, cid))
+    start = datetime.combine(day, datetime.min.time(), tzinfo=zone).astimezone(timezone.utc)
+    end = start + timedelta(days=1)
+    logs = list(
+        db.scalars(
+            sa_select(AttendanceLog)
+            .where(
+                AttendanceLog.company_id == cid,
+                AttendanceLog.employee_id == employee_id,
+                AttendanceLog.event_timestamp >= start,
+                AttendanceLog.event_timestamp <= end,
+            )
+            .order_by(AttendanceLog.event_timestamp)
+        )
+    )
+    return [
+        {
+            "time": log.event_timestamp.isoformat(),
+            "event_type": log.event_type.value if hasattr(log.event_type, "value") else str(log.event_type),
+            "source": log.source.value if hasattr(log.source, "value") else str(log.source),
+        }
+        for log in logs
+    ]
 
 
 @router.get("/range-summary")

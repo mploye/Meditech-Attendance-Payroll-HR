@@ -151,3 +151,38 @@ def test_multiple_punched_breaks_are_summed(db, ctx):
     assert rec.break_minutes == 62  # 5 + 5 + 45 + 7
     assert rec.worked_minutes == 540 - 62  # 09:00-18:00 minus breaks
     assert rec.status == AttendanceStatus.PRESENT
+
+
+def test_range_summary_aggregates_present_days_and_hours(db, ctx):
+    for ts, ev in [(_ts(9, 0), EventType.IN), (_ts(18, 0), EventType.OUT)]:
+        attendance_service.insert_raw_log(
+            db,
+            company_id=ctx["company_id"],
+            device_id=None,
+            employee_id=ctx["employee_id"],
+            device_user_id="A001",
+            event_timestamp=ts,
+            event_type=ev,
+            source=LogSource.MANUAL,
+        )
+    attendance_service.process_day(db, ctx["company_id"], ctx["employee_id"], DAY)
+
+    rows = attendance_service.get_range_summary(
+        db, ctx["company_id"], date(2024, 7, 15), date(2024, 7, 21)
+    )
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["employee_code"] == "A001"
+    assert row["present_days"] == 1
+    assert row["worked_minutes"] == 480  # 09:00-18:00 minus 60m break
+    assert row["total_days"] == 1
+
+
+def test_range_summary_includes_employee_with_no_records(db, ctx):
+    rows = attendance_service.get_range_summary(
+        db, ctx["company_id"], date(2024, 8, 1), date(2024, 8, 31)
+    )
+    assert len(rows) == 1
+    assert rows[0]["present_days"] == 0
+    assert rows[0]["worked_minutes"] == 0
+    assert rows[0]["total_days"] == 0

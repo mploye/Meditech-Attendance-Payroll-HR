@@ -457,6 +457,110 @@ def get_daily_summary(
     }
 
 
+def get_range_summary(
+    db: Session, company_id: str, from_date: date, to_date: date
+) -> list[dict]:
+    """Per-employee attendance aggregates across a date range (day/week/month).
+
+    Returns one row per employee with present/absent/missing-punch day counts
+    and worked-hours totals, so the UI can render Daily, Weekly and Monthly
+    summaries from a single call. Employees with no processed records in the
+    range are still included with zeroed counts.
+    """
+    from sqlalchemy import func, select as sa_select
+
+    employees = list(
+        db.scalars(
+            sa_select(Employee)
+            .where(Employee.company_id == company_id)
+            .order_by(Employee.employee_code)
+        )
+    )
+
+    agg_stmt = (
+        sa_select(
+            AttendanceDaily.employee_id,
+            AttendanceDaily.status,
+            func.count().label("days"),
+            func.coalesce(func.sum(AttendanceDaily.worked_minutes), 0).label("worked"),
+            func.coalesce(func.sum(AttendanceDaily.late_minutes), 0).label("late"),
+            func.coalesce(func.sum(AttendanceDaily.overtime_minutes), 0).label("ot"),
+            func.coalesce(func.sum(AttendanceDaily.early_leave_minutes), 0).label("early"),
+        )
+        .where(
+            AttendanceDaily.company_id == company_id,
+            AttendanceDaily.attendance_date >= from_date,
+            AttendanceDaily.attendance_date <= to_date,
+        )
+        .group_by(AttendanceDaily.employee_id, AttendanceDaily.status)
+    )
+    buckets: dict[str, dict] = {}
+    for emp_id, status, days, worked, late, ot, early in db.execute(agg_stmt):
+        b = buckets.setdefault(
+            str(emp_id),
+            {
+                "present_days": 0,
+                "absent_days": 0,
+                "missing_punch_days": 0,
+                "half_day_days": 0,
+                "leave_days": 0,
+                "holiday_days": 0,
+                "worked_minutes": 0,
+                "present_worked_minutes": 0,
+                "late_minutes": 0,
+                "overtime_minutes": 0,
+                "early_leave_minutes": 0,
+                "total_days": 0,
+            },
+        )
+        status_value = status.value if hasattr(status, "value") else str(status)
+        b["total_days"] += int(days)
+        b["worked_minutes"] += int(worked)
+        b["late_minutes"] += int(late)
+        b["overtime_minutes"] += int(ot)
+        b["early_leave_minutes"] += int(early)
+        if status_value == AttendanceStatus.PRESENT.value:
+            b["present_days"] += int(days)
+            b["present_worked_minutes"] += int(worked)
+        elif status_value == AttendanceStatus.ABSENT.value:
+            b["absent_days"] += int(days)
+        elif status_value == AttendanceStatus.MISSING_PUNCH.value:
+            b["missing_punch_days"] += int(days)
+        elif status_value in ("HALF_DAY",):
+            b["half_day_days"] += int(days)
+        elif status_value in ("LEAVE", "ON_LEAVE"):
+            b["leave_days"] += int(days)
+        elif status_value in ("HOLIDAY",):
+            b["holiday_days"] += int(days)
+
+    empty = {
+        "present_days": 0,
+        "absent_days": 0,
+        "missing_punch_days": 0,
+        "half_day_days": 0,
+        "leave_days": 0,
+        "holiday_days": 0,
+        "worked_minutes": 0,
+        "present_worked_minutes": 0,
+        "late_minutes": 0,
+        "overtime_minutes": 0,
+        "early_leave_minutes": 0,
+        "total_days": 0,
+    }
+    out: list[dict] = []
+    for emp in employees:
+        b = buckets.get(str(emp.id), empty)
+        out.append(
+            {
+                "employee_id": str(emp.id),
+                "employee_code": emp.employee_code,
+                "employee_name": f"{emp.first_name} {emp.last_name or ''}".strip(),
+                **b,
+            }
+        )
+    return out
+
+
 def log_sync_start(db: Session, company_id: str, device_id: str | None = None) -> DeviceSyncLog:
     """Create and return a new device sync log with the start timestamp."""
     sync_log = DeviceSyncLog(

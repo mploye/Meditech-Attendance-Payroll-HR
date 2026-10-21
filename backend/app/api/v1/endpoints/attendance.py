@@ -62,6 +62,19 @@ def daily_attendance(
     )
 
 
+@router.get("/range-summary")
+def range_summary(
+    from_date: date,
+    to_date: date,
+    user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Per-employee aggregates across a range — powers Daily/Weekly/Monthly tabs."""
+    ensure_perm(user, "attendance.view")
+    cid = resolve_company_id(user)
+    return success_response(attendance_service.get_range_summary(db, cid, from_date, to_date))
+
+
 @router.get("/monthly")
 def monthly_attendance(
     month: int = Query(..., ge=1, le=12),
@@ -72,25 +85,12 @@ def monthly_attendance(
 ):
     ensure_perm(user, "attendance.view")
     cid = resolve_company_id(user)
-    from sqlalchemy import select
+    from calendar import monthrange
 
-    emp_stmt = select(Employee).where(Employee.company_id == cid)
+    last_day = monthrange(year, month)[1]
+    rows = attendance_service.get_range_summary(db, cid, date(year, month, 1), date(year, month, last_day))
     if employee_id:
-        emp_stmt = emp_stmt.where(Employee.id == employee_id)
-    employees = list(db.scalars(emp_stmt))
-    rows = []
-    for emp in employees:
-        summary = attendance_service.get_daily_summary(
-            db, cid, str(emp.id), date(year, month, 1), date(year, month, 28)
-        )
-        rows.append(
-            {
-                "employee_id": str(emp.id),
-                "employee_code": emp.employee_code,
-                "employee_name": f"{emp.first_name} {emp.last_name or ''}",
-                **summary,
-            }
-        )
+        rows = [r for r in rows if r["employee_id"] == employee_id]
     return success_response(rows)
 
 

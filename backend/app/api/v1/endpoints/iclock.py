@@ -48,17 +48,25 @@ ATTLOG_REUPLOAD_INTERVAL_SEC = 60
 
 
 def queue_command(sn: str, command: str, company_id: Optional[str] = None) -> None:
-    """Persist a pending server->device command for the given serial number."""
+    """Persist a pending server->device command for the given serial number.
+
+    De-duplicates only against a command that is still "in flight" (undelivered,
+    or delivered within the last few minutes). An old delivered-but-never-
+    confirmed command does NOT block a fresh one, so the recurring refresh job
+    keeps prodding a device that drops an acknowledgement.
+    """
     sn = (sn or "").strip()
     if not sn or not command:
         return
     db = SessionLocal()
     try:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
         existing = db.scalar(
             select(DeviceCommand).where(
                 DeviceCommand.serial_number == sn,
                 DeviceCommand.command == command,
                 DeviceCommand.confirmed.is_(False),
+                (DeviceCommand.delivered.is_(False)) | (DeviceCommand.delivered_at >= cutoff),
             )
         )
         if existing is not None:

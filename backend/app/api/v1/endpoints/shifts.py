@@ -3,6 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import or_, select
+from sqlalchemy.orm import selectinload
 
 from api.deps import ensure_perm, get_current_user, get_db, orm_to_dict, resolve_company_id
 from core.errors import NotFoundError, ValidationError, success_response
@@ -64,7 +65,14 @@ def list_shifts(user: User = Depends(get_current_user), db=Depends(get_db)):
     ensure_perm(user, "shifts.view")
     cid = resolve_company_id(user)
 
-    shifts = list(db.scalars(select(Shift).where(Shift.company_id == cid)))
+    shifts = list(
+        db.scalars(
+            select(Shift)
+            .where(Shift.company_id == cid)
+            .options(selectinload(Shift.breaks))
+            .order_by(Shift.created_at)
+        )
+    )
     return success_response([_shift_dict(s) for s in shifts])
 
 

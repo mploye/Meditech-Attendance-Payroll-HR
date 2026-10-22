@@ -59,12 +59,42 @@ type EmployeeOption = {
 
 const EMPTY_BREAK_FORM = { name: "", break_type: "SCHEDULED", start_time: "", max_duration_minutes: "15", is_paid: "true", sort_order: "0" };
 
+const SHIFTS_CACHE = "hrms.cache.shifts";
+const ASSIGNMENTS_CACHE = "hrms.cache.shift-assignments";
+const EMPLOYEES_CACHE = "hrms.cache.employees";
+const CACHE_TTL_MS = 5 * 60_000;
+
+type CacheEntry<T> = { at: number; value: T };
+
+function readCache<T>(key: string): T | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const entry = JSON.parse(raw) as CacheEntry<T>;
+    if (!entry || Date.now() - entry.at > CACHE_TTL_MS) return null;
+    return entry.value;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache<T>(key: string, value: T) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), value }));
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
 function employeeName(e: EmployeeOption) {
   return `${e.first_name || ""} ${e.last_name || ""}`.trim();
 }
 
 export default function ShiftsPage() {
   const [items, setItems] = useState<Shift[]>([]);
+  const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -83,16 +113,23 @@ export default function ShiftsPage() {
   const [assignSearch, setAssignSearch] = useState<Record<string, string>>({});
   const [assignLoading, setAssignLoading] = useState<string | null>(null);
 
+  const applyShifts = (data: Shift[]) => {
+    const active = data.filter((s) => s.active);
+    setItems(active);
+    const byId: Record<string, ShiftBreak[]> = {};
+    for (const s of active) byId[s.id] = s.breaks || [];
+    setSchedules(byId);
+  };
+
   const load = async () => {
     try {
       const data = await api.get<Shift[]>("/api/v1/shifts");
-      const active = data.filter((s) => s.active);
-      setItems(active);
-      const byId: Record<string, ShiftBreak[]> = {};
-      for (const s of active) byId[s.id] = s.breaks || [];
-      setSchedules(byId);
+      writeCache(SHIFTS_CACHE, data);
+      applyShifts(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load shifts");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -104,6 +141,7 @@ export default function ShiftsPage() {
         page_size: 200,
       });
       setEmployees(data.items);
+      writeCache(EMPLOYEES_CACHE, data.items);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load employees");
     }
@@ -125,6 +163,7 @@ export default function ShiftsPage() {
     try {
       const data = await api.get<CompanyAssignment[]>("/api/v1/shifts/assignments");
       setAllAssignments(data);
+      writeCache(ASSIGNMENTS_CACHE, data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load shift allocations");
     }
@@ -132,8 +171,14 @@ export default function ShiftsPage() {
 
   useEffect(() => {
     const t = setTimeout(() => {
+      const cachedShifts = readCache<Shift[]>(SHIFTS_CACHE);
+      if (cachedShifts) applyShifts(cachedShifts);
+      const cachedAssignments = readCache<CompanyAssignment[]>(ASSIGNMENTS_CACHE);
+      if (cachedAssignments) setAllAssignments(cachedAssignments);
+      const cachedEmployees = readCache<EmployeeOption[]>(EMPLOYEES_CACHE);
+      if (cachedEmployees) setEmployees(cachedEmployees);
+
       void load();
-      void loadEmployees();
       void loadAllAssignments();
     }, 0);
     return () => clearTimeout(t);
@@ -425,7 +470,20 @@ export default function ShiftsPage() {
 
       <Card>
         {items.length === 0 ? (
-          <Empty />
+          loading ? (
+            <div className="divide-y divide-neutral-100" aria-hidden="true">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex items-center gap-4 px-5 py-4">
+                  <div className="h-3 w-36 animate-pulse rounded bg-neutral-100" />
+                  <div className="h-3 w-24 animate-pulse rounded bg-neutral-100" />
+                  <div className="h-3 w-16 animate-pulse rounded bg-neutral-100" />
+                  <div className="ml-auto h-3 w-20 animate-pulse rounded bg-neutral-100" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Empty />
+          )
         ) : (
           <div className="overflow-x-auto">
             <table className="mobile-stack w-full text-left text-sm">

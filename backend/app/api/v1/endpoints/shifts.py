@@ -2,7 +2,7 @@ from datetime import date, time, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from api.deps import ensure_perm, get_current_user, get_db, orm_to_dict, resolve_company_id
 from core.errors import NotFoundError, ValidationError, success_response
@@ -66,6 +66,32 @@ def list_shifts(user: User = Depends(get_current_user), db=Depends(get_db)):
 
     shifts = list(db.scalars(select(Shift).where(Shift.company_id == cid)))
     return success_response([_shift_dict(s) for s in shifts])
+
+
+@router.get("/assignments")
+def list_company_assignments(user: User = Depends(get_current_user), db=Depends(get_db)):
+    ensure_perm(user, "shifts.view")
+    cid = resolve_company_id(user)
+    today = date.today()
+    rows = db.execute(
+        select(ShiftAssignment, Employee, Shift)
+        .join(Employee, Employee.id == ShiftAssignment.employee_id)
+        .join(Shift, Shift.id == ShiftAssignment.shift_id)
+        .where(
+            ShiftAssignment.company_id == cid,
+            or_(ShiftAssignment.effective_from.is_(None), ShiftAssignment.effective_from <= today),
+            or_(ShiftAssignment.effective_to.is_(None), ShiftAssignment.effective_to >= today),
+        )
+        .order_by(Employee.first_name, Employee.last_name)
+    ).all()
+    data = []
+    for assignment, emp, shift in rows:
+        item = orm_to_dict(assignment)
+        item["employee_code"] = emp.employee_code
+        item["employee_name"] = f"{emp.first_name or ''} {emp.last_name or ''}".strip()
+        item["shift_name"] = shift.name
+        data.append(item)
+    return success_response(data)
 
 
 @router.post("/")
@@ -268,8 +294,6 @@ def list_shift_breaks(shift_id: str, user: User = Depends(get_current_user), db=
     ensure_perm(user, "shifts.view")
     cid = resolve_company_id(user)
     shift = _get_shift(db, cid, shift_id)
-    from sqlalchemy import select
-
     rows = list(db.scalars(select(ShiftBreak).where(ShiftBreak.shift_id == shift.id)))
     return success_response([_shift_break_dict(b) for b in rows])
 

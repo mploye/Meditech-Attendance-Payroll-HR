@@ -45,6 +45,11 @@ type Assignment = {
   employee_name: string;
 };
 
+type CompanyAssignment = Assignment & {
+  shift_id: string;
+  shift_name: string;
+};
+
 type EmployeeOption = {
   id: string;
   employee_code: string;
@@ -70,6 +75,7 @@ export default function ShiftsPage() {
   const [breakForm, setBreakForm] = useState<Record<string, string>>(EMPTY_BREAK_FORM);
   const [schedules, setSchedules] = useState<Record<string, ShiftBreak[]>>({});
   const [assignments, setAssignments] = useState<Record<string, Assignment[]>>({});
+  const [allAssignments, setAllAssignments] = useState<CompanyAssignment[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [assignSelection, setAssignSelection] = useState<Record<string, string[]>>({});
   const [assignFrom, setAssignFrom] = useState<Record<string, string>>({});
@@ -113,10 +119,20 @@ export default function ShiftsPage() {
     }
   };
 
+  const loadAllAssignments = async () => {
+    try {
+      const data = await api.get<CompanyAssignment[]>("/api/v1/shifts/assignments");
+      setAllAssignments(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load shift allocations");
+    }
+  };
+
   useEffect(() => {
     const t = setTimeout(() => {
       void load();
       void loadEmployees();
+      void loadAllAssignments();
     }, 0);
     return () => clearTimeout(t);
   }, []);
@@ -187,6 +203,7 @@ export default function ShiftsPage() {
     });
     setBreakForm(EMPTY_BREAK_FORM);
     void loadAssignments(shift.id);
+    void loadAllAssignments();
   };
 
   const saveShift = async (e: React.FormEvent) => {
@@ -258,12 +275,15 @@ export default function ShiftsPage() {
   };
 
   const availableEmployees = (shiftId: string) => {
-    const assigned = new Set(
+    const assignedHere = new Set(
       (assignments[shiftId] || []).filter((a) => !a.effective_to).map((a) => a.employee_id)
+    );
+    const assignedElsewhere = new Set(
+      allAssignments.filter((a) => a.shift_id !== shiftId).map((a) => a.employee_id)
     );
     const term = (assignSearch[shiftId] || "").trim().toLowerCase();
     return employees.filter((e) => {
-      if (assigned.has(e.id)) return false;
+      if (assignedHere.has(e.id) || assignedElsewhere.has(e.id)) return false;
       if (!term) return true;
       return `${e.employee_code} ${employeeName(e)}`.toLowerCase().includes(term);
     });
@@ -295,6 +315,7 @@ export default function ShiftsPage() {
       setNotice(`${ids.length} employee${ids.length === 1 ? "" : "s"} assigned`);
       setAssignSelection((cur) => ({ ...cur, [shiftId]: [] }));
       await loadAssignments(shiftId);
+      await loadAllAssignments();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to assign employees");
     } finally {
@@ -309,6 +330,7 @@ export default function ShiftsPage() {
       await api.del(`/api/v1/shifts/${shiftId}/assignments/${assignmentId}`);
       setNotice("Employee removed from shift");
       await loadAssignments(shiftId);
+      await loadAllAssignments();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove employee");
     } finally {
@@ -529,7 +551,9 @@ export default function ShiftsPage() {
                   <div className="mt-3 max-h-48 overflow-y-auto rounded border border-neutral-100">
                     {availableEmployees(editing.id).length === 0 ? (
                       <p className="px-3 py-2 text-sm text-neutral-400">
-                        {employees.length === 0 ? "No active employees found." : "All matching employees are already assigned."}
+                        {employees.length === 0
+                          ? "No active employees found."
+                          : "All matching employees are already assigned to a shift."}
                       </p>
                     ) : (
                       availableEmployees(editing.id).map((e) => (

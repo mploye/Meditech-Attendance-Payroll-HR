@@ -1,3 +1,6 @@
+from datetime import date
+
+
 def _create_shift(client, headers, name):
     r = client.post(
         "/api/v1/shifts/",
@@ -77,7 +80,7 @@ def test_reassign_closes_previous_assignment(client, company):
     second = client.post(
         f"/api/v1/shifts/{shift_b['id']}/assign",
         headers=headers,
-        json={"employee_ids": [emp["id"]], "effective_from": "2026-10-10"},
+        json={"employee_ids": [emp["id"]], "effective_from": date.today().isoformat()},
     )
     assert second.status_code == 200, second.text
 
@@ -88,6 +91,10 @@ def test_reassign_closes_previous_assignment(client, company):
     new_rows = client.get(f"/api/v1/shifts/{shift_b['id']}/assignments", headers=headers).json()["data"]
     assert len(new_rows) == 1
     assert new_rows[0]["effective_to"] is None
+
+    company_rows = client.get("/api/v1/shifts/assignments", headers=headers).json()["data"]
+    assert [(row["employee_code"], row["shift_id"]) for row in company_rows] == [("E201", shift_b["id"])]
+    assert company_rows[0]["shift_name"] == "Shift B"
 
 
 def test_assign_requires_employee_ids(client, company):

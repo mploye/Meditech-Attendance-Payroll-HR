@@ -34,7 +34,27 @@ type Shift = {
   breaks?: ShiftBreak[];
 };
 
+type Assignment = {
+  id: string;
+  employee_id: string;
+  effective_from?: string | null;
+  effective_to?: string | null;
+  employee_code: string;
+  employee_name: string;
+};
+
+type EmployeeOption = {
+  id: string;
+  employee_code: string;
+  first_name: string;
+  last_name?: string | null;
+};
+
 const EMPTY_BREAK_FORM = { name: "", break_type: "SCHEDULED", start_time: "", max_duration_minutes: "15", is_paid: "true", sort_order: "0" };
+
+function employeeName(e: EmployeeOption) {
+  return `${e.first_name || ""} ${e.last_name || ""}`.trim();
+}
 
 export default function ShiftsPage() {
   const [items, setItems] = useState<Shift[]>([]);
@@ -46,6 +66,12 @@ export default function ShiftsPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [breakForm, setBreakForm] = useState<Record<string, string>>(EMPTY_BREAK_FORM);
   const [schedules, setSchedules] = useState<Record<string, ShiftBreak[]>>({});
+  const [assignments, setAssignments] = useState<Record<string, Assignment[]>>({});
+  const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+  const [assignSelection, setAssignSelection] = useState<Record<string, string[]>>({});
+  const [assignFrom, setAssignFrom] = useState<Record<string, string>>({});
+  const [assignSearch, setAssignSearch] = useState<Record<string, string>>({});
+  const [assignLoading, setAssignLoading] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -59,8 +85,36 @@ export default function ShiftsPage() {
     }
   };
 
+  const loadEmployees = async () => {
+    try {
+      const data = await api.get<{ items: EmployeeOption[]; total: number }>("/api/v1/employees/", {
+        status: "ACTIVE",
+        page: 1,
+        page_size: 200,
+      });
+      setEmployees(data.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load employees");
+    }
+  };
+
+  const loadAssignments = async (shiftId: string) => {
+    setAssignLoading(shiftId);
+    try {
+      const data = await api.get<Assignment[]>(`/api/v1/shifts/${shiftId}/assignments`);
+      setAssignments((cur) => ({ ...cur, [shiftId]: data }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load assigned employees");
+    } finally {
+      setAssignLoading(null);
+    }
+  };
+
   useEffect(() => {
-    const t = setTimeout(() => void load(), 0);
+    const t = setTimeout(() => {
+      void load();
+      void loadEmployees();
+    }, 0);
     return () => clearTimeout(t);
   }, []);
 
@@ -133,7 +187,73 @@ export default function ShiftsPage() {
     }
   };
 
-  const toggle = (id: string) => setExpanded((cur) => (cur === id ? null : id));
+  const availableEmployees = (shiftId: string) => {
+    const assigned = new Set(
+      (assignments[shiftId] || []).filter((a) => !a.effective_to).map((a) => a.employee_id)
+    );
+    const term = (assignSearch[shiftId] || "").trim().toLowerCase();
+    return employees.filter((e) => {
+      if (assigned.has(e.id)) return false;
+      if (!term) return true;
+      return `${e.employee_code} ${employeeName(e)}`.toLowerCase().includes(term);
+    });
+  };
+
+  const toggleEmployee = (shiftId: string, employeeId: string) => {
+    setAssignSelection((cur) => {
+      const list = cur[shiftId] || [];
+      return {
+        ...cur,
+        [shiftId]: list.includes(employeeId) ? list.filter((x) => x !== employeeId) : [...list, employeeId],
+      };
+    });
+  };
+
+  const assignEmployees = async (shiftId: string) => {
+    const ids = assignSelection[shiftId] || [];
+    if (!ids.length) {
+      setError("Select at least one employee to assign");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/api/v1/shifts/${shiftId}/assign`, {
+        employee_ids: ids,
+        effective_from: assignFrom[shiftId] || null,
+      });
+      setNotice(`${ids.length} employee${ids.length === 1 ? "" : "s"} assigned`);
+      setAssignSelection((cur) => ({ ...cur, [shiftId]: [] }));
+      await loadAssignments(shiftId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to assign employees");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const unassign = async (shiftId: string, assignmentId: string) => {
+    setBusy(true);
+    setError("");
+    try {
+      await api.del(`/api/v1/shifts/${shiftId}/assignments/${assignmentId}`);
+      setNotice("Employee removed from shift");
+      await loadAssignments(shiftId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove employee");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggle = (id: string) => {
+    if (expanded === id) {
+      setExpanded(null);
+      return;
+    }
+    setExpanded(id);
+    if (!assignments[id]) void loadAssignments(id);
+  };
 
   return (
     <div>
@@ -229,6 +349,81 @@ export default function ShiftsPage() {
                     {expanded === s.id ? (
                       <tr>
                         <td colSpan={6} className="bg-neutral-50 px-5 py-4">
+                          <div className="mb-5">
+                            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Assigned employees</h4>
+                            {assignLoading === s.id ? (
+                              <p className="mt-2 text-sm text-neutral-400">Loading…</p>
+                            ) : (assignments[s.id] || []).length === 0 ? (
+                              <Empty text="No employees assigned to this shift yet" />
+                            ) : (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {(assignments[s.id] || []).map((a) => (
+                                  <span key={a.id} className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-white px-3 py-1.5 text-sm">
+                                    <span className="font-medium text-neutral-800">{a.employee_name || a.employee_code}</span>
+                                    <span className="text-neutral-400">
+                                      {a.employee_code}
+                                      {a.effective_from ? ` · from ${a.effective_from}` : ""}
+                                      {a.effective_to ? ` · to ${a.effective_to}` : ""}
+                                    </span>
+                                    <button
+                                      onClick={() => unassign(s.id, a.id)}
+                                      className="text-xs text-rose-600 hover:underline"
+                                      disabled={busy}
+                                    >
+                                      Remove
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="mt-3 rounded-lg border border-neutral-200 bg-white p-3">
+                              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                                <Input
+                                  label="Search employees"
+                                  placeholder="Name or code"
+                                  value={assignSearch[s.id] || ""}
+                                  onChange={(v) => setAssignSearch((cur) => ({ ...cur, [s.id]: v }))}
+                                />
+                                <Input
+                                  label="Effective from"
+                                  type="date"
+                                  value={assignFrom[s.id] || ""}
+                                  onChange={(v) => setAssignFrom((cur) => ({ ...cur, [s.id]: v }))}
+                                />
+                                <div className="flex items-end">
+                                  <Button
+                                    onClick={() => void assignEmployees(s.id)}
+                                    disabled={busy || !(assignSelection[s.id] || []).length}
+                                  >
+                                    Assign selected ({(assignSelection[s.id] || []).length})
+                                  </Button>
+                                </div>
+                              </div>
+                              <div className="mt-3 max-h-48 overflow-y-auto rounded border border-neutral-100">
+                                {availableEmployees(s.id).length === 0 ? (
+                                  <p className="px-3 py-2 text-sm text-neutral-400">
+                                    {employees.length === 0 ? "No active employees found." : "All matching employees are already assigned."}
+                                  </p>
+                                ) : (
+                                  availableEmployees(s.id).map((e) => (
+                                    <label
+                                      key={e.id}
+                                      className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-neutral-50"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={(assignSelection[s.id] || []).includes(e.id)}
+                                        onChange={() => toggleEmployee(s.id, e.id)}
+                                      />
+                                      <span className="font-medium text-neutral-800">{e.employee_code}</span>
+                                      <span className="text-neutral-500">{employeeName(e)}</span>
+                                    </label>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          </div>
                           <div className="mb-3">
                             <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Scheduled breaks</h4>
                             {(schedules[s.id] || []).length === 0 ? (

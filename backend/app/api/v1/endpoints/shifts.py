@@ -1,7 +1,8 @@
-from datetime import date, time
+from datetime import date, time, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 
 from api.deps import ensure_perm, get_current_user, get_db, orm_to_dict, resolve_company_id
 from core.errors import NotFoundError, ValidationError, success_response
@@ -47,11 +48,21 @@ def _parse_time(value):
     return time(int(parts[0]), int(parts[1]))
 
 
+def _parse_date(value):
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError as exc:
+        raise ValidationError(f"Invalid date: {value}") from exc
+
+
 @router.get("/")
 def list_shifts(user: User = Depends(get_current_user), db=Depends(get_db)):
     ensure_perm(user, "shifts.view")
     cid = resolve_company_id(user)
-    from sqlalchemy import select
 
     shifts = list(db.scalars(select(Shift).where(Shift.company_id == cid)))
     return success_response([_shift_dict(s) for s in shifts])
@@ -143,29 +154,93 @@ def assign_shift(shift_id: str, body: dict, user: User = Depends(get_current_use
     ensure_perm(user, "shifts.edit")
     cid = resolve_company_id(user)
     shift = _get_shift(db, cid, shift_id)
-    employee_ids = body.get("employee_ids") or []
-    effective_from = body.get("effective_from")
-    if isinstance(effective_from, str):
-        effective_from = date.fromisoformat(effective_from)
-    effective_to = body.get("effective_to")
-    if isinstance(effective_to, str):
-        effective_to = date.fromisoformat(effective_to)
+    raw_ids = body.get("employee_ids") or []
+    if not isinstance(raw_ids, list) or not raw_ids:
+        raise ValidationError("employee_ids must be a non-empty list")
+    effective_from = _parse_date(body.get("effective_from"))
+    effective_to = _parse_date(body.get("effective_to"))
+    if effective_from and effective_to and effective_to < effective_from:
+        raise ValidationError("effective_to cannot be before effective_from")
     created = []
-    for emp_id in employee_ids:
+    for emp_id in dict.fromkeys(str(emp) for emp in raw_ids):
         emp = db.get(Employee, emp_id)
         if emp is None or str(emp.company_id) != cid:
             continue
-        assignment = ShiftAssignment(
-            company_id=cid,
-            employee_id=str(emp_id),
-            shift_id=str(shift.id),
-            effective_from=effective_from,
-            effective_to=effective_to,
+        for other in db.scalars(
+            select(ShiftAssignment).where(
+                ShiftAssignment.company_id == cid,
+                ShiftAssignment.employee_id == emp_id,
+                ShiftAssignment.shift_id != str(shift.id),
+                ShiftAssignment.effective_to.is_(None),
+            )
+        ):
+            other.effective_to = (
+                effective_from - timedelta(days=1) if effective_from else date.today() - timedelta(days=1)
+            )
+        existing = db.scalar(
+            select(ShiftAssignment).where(
+                ShiftAssignment.company_id == cid,
+                ShiftAssignment.employee_id == emp_id,
+                ShiftAssignment.shift_id == str(shift.id),
+                ShiftAssignment.effective_to.is_(None),
+            )
         )
-        db.add(assignment)
-        created.append(str(emp_id))
+        if existing is not None:
+            existing.effective_from = effective_from
+            existing.effective_to = effective_to
+        else:
+            db.add(
+                ShiftAssignment(
+                    company_id=cid,
+                    employee_id=emp_id,
+                    shift_id=str(shift.id),
+                    effective_from=effective_from,
+                    effective_to=effective_to,
+                )
+            )
+        created.append(emp_id)
     db.commit()
     return success_response({"assigned": created})
+
+
+@router.get("/{shift_id}/assignments")
+def list_shift_assignments(shift_id: str, user: User = Depends(get_current_user), db=Depends(get_db)):
+    ensure_perm(user, "shifts.view")
+    cid = resolve_company_id(user)
+    shift = _get_shift(db, cid, shift_id)
+    rows = db.execute(
+        select(ShiftAssignment, Employee)
+        .join(Employee, Employee.id == ShiftAssignment.employee_id)
+        .where(ShiftAssignment.company_id == cid, ShiftAssignment.shift_id == str(shift.id))
+        .order_by(Employee.first_name, Employee.last_name)
+    ).all()
+    data = []
+    for assignment, emp in rows:
+        item = orm_to_dict(assignment)
+        item["employee_code"] = emp.employee_code
+        item["employee_name"] = f"{emp.first_name or ''} {emp.last_name or ''}".strip()
+        item["department_id"] = str(emp.department_id) if emp.department_id else None
+        data.append(item)
+    return success_response(data)
+
+
+@router.delete("/{shift_id}/assignments/{assignment_id}")
+def unassign_shift(
+    shift_id: str, assignment_id: str, user: User = Depends(get_current_user), db=Depends(get_db)
+):
+    ensure_perm(user, "shifts.edit")
+    cid = resolve_company_id(user)
+    shift = _get_shift(db, cid, shift_id)
+    assignment = db.get(ShiftAssignment, assignment_id)
+    if (
+        assignment is None
+        or str(assignment.company_id) != cid
+        or str(assignment.shift_id) != str(shift.id)
+    ):
+        raise NotFoundError("Shift assignment")
+    db.delete(assignment)
+    db.commit()
+    return success_response({"deleted": True})
 
 
 @router.post("/default")
@@ -173,7 +248,6 @@ def set_default(body: dict, user: User = Depends(get_current_user), db=Depends(g
     ensure_perm(user, "shifts.edit")
     cid = resolve_company_id(user)
     shift = _get_shift(db, cid, body["shift_id"])
-    from sqlalchemy import select
 
     for other in list(db.scalars(select(Shift).where(Shift.company_id == cid, Shift.is_default.is_(True)))):
         other.is_default = False

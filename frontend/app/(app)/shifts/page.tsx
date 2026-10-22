@@ -183,7 +183,7 @@ export default function ShiftsPage() {
     }
   };
 
-  const startEdit = (shift: Shift) => {
+  const startEdit = (shift: Shift, focusEmployees = false) => {
     setEditing(shift);
     setEditForm({
       name: shift.name || "",
@@ -205,6 +205,11 @@ export default function ShiftsPage() {
     setBreakForm(EMPTY_BREAK_FORM);
     void loadAssignments(shift.id);
     void loadAllAssignments();
+    if (focusEmployees) {
+      window.setTimeout(() => {
+        document.getElementById("assign-employees")?.scrollIntoView({ block: "start", behavior: "smooth" });
+      }, 100);
+    }
   };
 
   const saveShift = async (e: React.FormEvent) => {
@@ -450,11 +455,11 @@ export default function ShiftsPage() {
                     </td>
                     <td data-label="OT" className="px-5 py-3 text-neutral-500">{s.overtime_enabled ? "Yes" : "No"}</td>
                     <td data-label="Assigned employees" className="px-5 py-3 text-neutral-500">
-                      {shiftEmployees(s.id).length === 0 ? (
-                        "—"
-                      ) : (
-                        <span className="flex flex-wrap gap-1">
-                          {shiftEmployees(s.id).map((a) => (
+                      <div className="flex flex-wrap items-center gap-1">
+                        {shiftEmployees(s.id).length === 0 ? (
+                          <span className="text-neutral-400">—</span>
+                        ) : (
+                          shiftEmployees(s.id).map((a) => (
                             <span
                               key={a.id}
                               title={a.employee_name}
@@ -462,9 +467,17 @@ export default function ShiftsPage() {
                             >
                               {a.employee_code}
                             </span>
-                          ))}
-                        </span>
-                      )}
+                          ))
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => startEdit(s, true)}
+                          aria-label={`Add employees to ${s.name}`}
+                          className="rounded border border-brand-200 bg-white px-1.5 py-0.5 text-xs font-medium text-brand-700 hover:bg-brand-50"
+                        >
+                          + Add
+                        </button>
+                      </div>
                     </td>
                     <td data-label="Edit" className="px-5 py-3">
                       <Button variant="secondary" onClick={() => startEdit(s)}>Edit</Button>
@@ -538,7 +551,7 @@ export default function ShiftsPage() {
                 </div>
               </form>
 
-              <div className="mt-6 border-t border-neutral-100 pt-5">
+              <div id="assign-employees" className="mt-6 border-t border-neutral-100 pt-5">
                 <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Assigned employees</h4>
                 {assignLoading === editing.id ? (
                   <p className="mt-2 text-sm text-neutral-400">Loading…</p>

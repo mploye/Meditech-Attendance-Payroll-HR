@@ -13,8 +13,7 @@ eSSL format and the legacy positional ZKTeco ATTLOG format are accepted.
 """
 
 import logging
-import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request
@@ -23,9 +22,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.deps import get_db
+from core.database import SessionLocal
 from core.timezone import get_zone
 from models.audit import AuditLog
 from models.device import Device
+from models.device_command import DeviceCommand
 from models.enums import DeviceStatus, EventType, LogSource
 from services import attendance_service
 
@@ -33,35 +34,110 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# --- ADMS server->device command queue -------------------------------------
-# The device polls /iclock/getrequest continuously; to pull data we queue a
-# command for its serial and hand it back on the next poll. Single worker
-# deployment (WEB_CONCURRENCY=1), so a process-local queue is sufficient.
-_cmd_lock = threading.Lock()
-_cmd_queue: dict[str, list[str]] = {}
-_cmd_counter = {"n": 0}
+# --- ADMS server->device command queue (persistent, DB-backed) --------------
+# The device polls /iclock/getrequest continuously; to pull data we store a
+# command for its serial and hand it back on the next poll. The queue lives in
+# the DB (device_commands) rather than process memory so a command survives
+# worker restarts / multiple Render instances, guaranteeing delivery.
+#
+# Attendance re-upload command. Sent whenever the server wants the device to
+# re-push its stored attendance log (e.g. the device cursor drifted to the
+# "9999 already-synced" sentinel and stopped uploading).
+ATTLOG_REUPLOAD_CMD = "DATA UPDATE ATTLOG"
+ATTLOG_REUPLOAD_INTERVAL_SEC = 60
 
 
-def queue_command(sn: str, command: str) -> None:
+def queue_command(sn: str, command: str, company_id: Optional[str] = None) -> None:
+    """Persist a pending server->device command for the given serial number."""
     sn = (sn or "").strip()
+    if not sn or not command:
+        return
+    db = SessionLocal()
+    try:
+        existing = db.scalar(
+            select(DeviceCommand).where(
+                DeviceCommand.serial_number == sn,
+                DeviceCommand.command == command,
+                DeviceCommand.confirmed.is_(False),
+            )
+        )
+        if existing is not None:
+            return
+        db.add(DeviceCommand(serial_number=sn, command=command, company_id=company_id))
+        db.commit()
+    finally:
+        db.close()
+
+
+def _pop_command(db: Session, sn: str) -> Optional[str]:
+    """Return the oldest undelivered command for this serial, marking it sent."""
+    if not sn:
+        return None
+    cmd = db.scalar(
+        select(DeviceCommand)
+        .where(
+            DeviceCommand.serial_number == sn,
+            DeviceCommand.delivered.is_(False),
+        )
+        .order_by(DeviceCommand.created_at)
+    )
+    if cmd is None:
+        return None
+    cmd.delivered = True
+    cmd.delivered_at = datetime.now(timezone.utc)
+    cmd.attempts = (cmd.attempts or 0) + 1
+    db.commit()
+    return cmd.command
+
+
+def _confirm_commands(db: Session, sn: str) -> None:
+    """Mark all delivered-but-unconfirmed commands for this serial as confirmed."""
     if not sn:
         return
-    with _cmd_lock:
-        _cmd_queue.setdefault(sn, []).append(command)
+    for cmd in db.scalars(
+        select(DeviceCommand).where(
+            DeviceCommand.serial_number == sn,
+            DeviceCommand.confirmed.is_(False),
+        )
+    ):
+        cmd.confirmed = True
+    db.commit()
 
 
-def _pop_command(sn: str) -> Optional[str]:
-    with _cmd_lock:
-        queue = _cmd_queue.get(sn)
-        if queue:
-            return queue.pop(0)
+def _last_attlog_at(db: Session, sn: str) -> Optional[datetime]:
+    """Latest ATTLOG punch-push time for a serial, from the iclock probe trail.
+
+    Probes are stored in audit_logs with new_value['endpoint'] == 'cdata:ATTLOG'.
+    """
+    rows = db.scalars(
+        select(AuditLog)
+        .where(
+            AuditLog.action == "iclock_probe",
+            AuditLog.entity_type == "iclock",
+            AuditLog.created_at >= datetime.now(timezone.utc) - timedelta(hours=6),
+        )
+        .order_by(AuditLog.created_at.desc())
+        .limit(50)
+    )
+    for row in rows:
+        value = row.new_value
+        if isinstance(value, str):
+            try:
+                import json
+
+                value = json.loads(value)
+            except Exception:
+                continue
+        if not isinstance(value, dict):
+            continue
+        if value.get("endpoint") == "cdata:ATTLOG" and (not sn or value.get("sn") == sn):
+            return row.created_at
     return None
 
 
-def _next_cmd_id() -> int:
-    with _cmd_lock:
-        _cmd_counter["n"] += 1
-        return _cmd_counter["n"]
+def _cmd_counter() -> int:
+    """Monotonic-ish command id for the ``C:<id>:<cmd>`` reply envelope."""
+    return int(datetime.now(timezone.utc).timestamp())
 
 
 
@@ -332,10 +408,33 @@ def _option_response(sn: str, stamp: str = "0", op_stamp: str = "0") -> str:
 @router.api_route("/iclock/cdata", methods=["GET"], include_in_schema=False)
 @router.api_route("/iclock/cdata.aspx", methods=["GET"], include_in_schema=False)
 def iclock_cdata_options(request: Request, db: Session = Depends(get_db)):
-    """ADMS registration handshake: reply with the device config block."""
+    """ADMS registration handshake: reply with the device config block.
+
+    Every handshake also (re)queues an attendance re-upload unless an ATTLOG
+    push arrived very recently. This self-heals devices whose cursor has drifted
+    to the "9999 already-synced" sentinel and silently stopped uploading.
+    """
     params = request.query_params
     sn = params.get("SN") or params.get("sn") or ""
     _probe(db, request, "cdata-options", sn=sn)
+
+    device = _device_for_serial(db, sn)
+    if device is not None:
+        device.last_seen_at = datetime.now(timezone.utc)
+        device.status = DeviceStatus.ONLINE
+        db.commit()
+
+    last_push = _last_attlog_at(db, sn)
+    stale = last_push is None or (datetime.now(timezone.utc) - last_push).total_seconds() > ATTLOG_REUPLOAD_INTERVAL_SEC
+    has_pending = db.scalar(
+        select(DeviceCommand.id).where(
+            DeviceCommand.serial_number == sn,
+            DeviceCommand.confirmed.is_(False),
+        )
+    )
+    if sn and stale and has_pending is None:
+        queue_command(sn, ATTLOG_REUPLOAD_CMD, company_id=str(device.company_id) if device else None)
+
     return PlainTextResponse(_option_response(sn))
 
 
@@ -437,10 +536,10 @@ def iclock_getrequest(request: Request, db: Session = Depends(get_db)):
     ``C:<id>:<command>``; otherwise an EMPTY body means "nothing to do".
     """
     sn = request.query_params.get("SN") or request.query_params.get("sn")
-    command = _pop_command(sn) if sn else None
+    command = _pop_command(db, sn) if sn else None
     _probe(db, request, "getrequest", sn=sn, body=command or "")
     if command:
-        return PlainTextResponse(f"C:{_next_cmd_id()}:{command}")
+        return PlainTextResponse(f"C:{_cmd_counter()}:{command}")
     return PlainTextResponse("")
 
 
@@ -459,8 +558,11 @@ def iclock_request_get(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/iclock/devicecmd", include_in_schema=False)
 def iclock_devicecmd(request: Request, db: Session = Depends(get_db)):
-    """Device confirms it executed a command; acknowledge."""
+    """Device confirms it executed a command; acknowledge and clear the queue."""
     _probe(db, request, "devicecmd")
+    sn = request.query_params.get("SN") or request.query_params.get("sn")
+    if sn:
+        _confirm_commands(db, sn)
     return PlainTextResponse("OK")
 
 

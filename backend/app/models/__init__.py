@@ -3,6 +3,7 @@ from models.audit import AuditLog
 from models.base import Base
 from models.company import Company
 from models.device import Device, ESSLConfig
+from models.device_command import DeviceCommand
 from models.employee import Employee
 from models.employee_device import EmployeeDevice
 from models.leave import Holiday, LeaveBalance, LeaveRequest, LeaveType
@@ -24,6 +25,7 @@ __all__ = [
     "Employee",
     "Device",
     "ESSLConfig",
+    "DeviceCommand",
     "EmployeeDevice",
     "AttendanceLog",
     "AttendanceDaily",

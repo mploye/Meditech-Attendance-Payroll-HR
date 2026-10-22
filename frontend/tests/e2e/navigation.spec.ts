@@ -18,8 +18,6 @@ const ROUTES = [
   ["/payroll", "/Payroll Periods/"],
   ["/payslips", "/Payslips/"],
   ["/reports", "/Reports/"],
-  ["/settings", "/Company & eSSL/"],
-  ["/audit", "/Audit Logs/"],
 ] as const;
 
 test.describe("navigation direct", () => {

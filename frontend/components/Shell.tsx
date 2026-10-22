@@ -47,13 +47,6 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: "/reports", label: "Reports" },
     ],
   },
-  {
-    section: "System",
-    items: [
-      { href: "/settings", label: "Company & eSSL" },
-      { href: "/audit", label: "Audit Logs" },
-    ],
-  },
 ];
 
 function isActive(pathname: string, href: string) {

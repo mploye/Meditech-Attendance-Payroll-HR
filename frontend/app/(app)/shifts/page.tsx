@@ -85,9 +85,10 @@ export default function ShiftsPage() {
   const load = async () => {
     try {
       const data = await api.get<Shift[]>("/api/v1/shifts");
-      setItems(data);
+      const active = data.filter((s) => s.active);
+      setItems(active);
       const byId: Record<string, ShiftBreak[]> = {};
-      for (const s of data) byId[s.id] = s.breaks || [];
+      for (const s of active) byId[s.id] = s.breaks || [];
       setSchedules(byId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load shifts");
@@ -274,6 +275,8 @@ export default function ShiftsPage() {
     }
   };
 
+  const shiftEmployees = (shiftId: string) => allAssignments.filter((a) => a.shift_id === shiftId);
+
   const availableEmployees = (shiftId: string) => {
     const assignedHere = new Set(
       (assignments[shiftId] || []).filter((a) => !a.effective_to).map((a) => a.employee_id)
@@ -333,6 +336,26 @@ export default function ShiftsPage() {
       await loadAllAssignments();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove employee");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteShift = async () => {
+    if (!editing) return;
+    if (!window.confirm(`Delete "${editing.name}"? Assigned employees will fall back to the default shift.`)) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await api.del(`/api/v1/shifts/${editing.id}`);
+      setNotice("Shift deleted");
+      setEditing(null);
+      await load();
+      await loadAllAssignments();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete shift");
     } finally {
       setBusy(false);
     }
@@ -399,6 +422,7 @@ export default function ShiftsPage() {
                   <th className="px-5 py-3 font-medium">Shift hrs</th>
                   <th className="px-5 py-3 font-medium">Breaks</th>
                   <th className="px-5 py-3 font-medium">OT</th>
+                  <th className="px-5 py-3 font-medium">Assigned employees</th>
                   <th className="px-5 py-3 font-medium">Edit</th>
                 </tr>
               </thead>
@@ -425,6 +449,23 @@ export default function ShiftsPage() {
                         : `${s.scheduled_break_count ?? 3} × ${s.scheduled_break_duration ?? 15} min`}
                     </td>
                     <td data-label="OT" className="px-5 py-3 text-neutral-500">{s.overtime_enabled ? "Yes" : "No"}</td>
+                    <td data-label="Assigned employees" className="px-5 py-3 text-neutral-500">
+                      {shiftEmployees(s.id).length === 0 ? (
+                        "—"
+                      ) : (
+                        <span className="flex flex-wrap gap-1">
+                          {shiftEmployees(s.id).map((a) => (
+                            <span
+                              key={a.id}
+                              title={a.employee_name}
+                              className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600"
+                            >
+                              {a.employee_code}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </td>
                     <td data-label="Edit" className="px-5 py-3">
                       <Button variant="secondary" onClick={() => startEdit(s)}>Edit</Button>
                     </td>
@@ -629,6 +670,12 @@ export default function ShiftsPage() {
                   </div>
                 </form>
               </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 px-5 py-3">
+              <Button variant="danger" onClick={() => void deleteShift()} disabled={busy}>
+                Delete shift
+              </Button>
+              <Button variant="secondary" onClick={() => setEditing(null)}>Close</Button>
             </div>
           </div>
         </div>

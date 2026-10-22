@@ -79,6 +79,7 @@ def list_company_assignments(user: User = Depends(get_current_user), db=Depends(
         .join(Shift, Shift.id == ShiftAssignment.shift_id)
         .where(
             ShiftAssignment.company_id == cid,
+            Shift.active.is_(True),
             or_(ShiftAssignment.effective_from.is_(None), ShiftAssignment.effective_from <= today),
             or_(ShiftAssignment.effective_to.is_(None), ShiftAssignment.effective_to >= today),
         )
@@ -171,6 +172,15 @@ def delete_shift(shift_id: str, user: User = Depends(get_current_user), db=Depen
     cid = resolve_company_id(user)
     shift = _get_shift(db, cid, shift_id)
     shift.active = False
+    yesterday = date.today() - timedelta(days=1)
+    for assignment in db.scalars(
+        select(ShiftAssignment).where(
+            ShiftAssignment.company_id == cid,
+            ShiftAssignment.shift_id == str(shift.id),
+            or_(ShiftAssignment.effective_to.is_(None), ShiftAssignment.effective_to > yesterday),
+        )
+    ):
+        assignment.effective_to = yesterday
     db.commit()
     return success_response({"deleted": True})
 

@@ -103,3 +103,24 @@ def test_assign_requires_employee_ids(client, company):
 
     r = client.post(f"/api/v1/shifts/{shift['id']}/assign", headers=headers, json={"employee_ids": []})
     assert r.status_code == 422, r.text
+
+def test_delete_shift_releases_assignments(client, company):
+    headers = company["headers"]
+    shift = _create_shift(client, headers, "Temporary")
+    emp = _create_employee(client, headers, "E301")
+
+    assigned = client.post(
+        f"/api/v1/shifts/{shift['id']}/assign",
+        headers=headers,
+        json={"employee_ids": [emp["id"]]},
+    )
+    assert assigned.status_code == 200, assigned.text
+
+    deleted = client.delete(f"/api/v1/shifts/{shift['id']}", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+
+    rows = client.get("/api/v1/shifts/assignments", headers=headers).json()["data"]
+    assert all(row["shift_id"] != shift["id"] for row in rows)
+
+    shifts = client.get("/api/v1/shifts", headers=headers).json()["data"]
+    assert next(s for s in shifts if s["id"] == shift["id"])["active"] is False

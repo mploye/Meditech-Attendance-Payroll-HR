@@ -123,7 +123,7 @@ export default function ShiftsPage() {
 
   const load = async () => {
     try {
-      const data = await api.get<Shift[]>("/api/v1/shifts");
+      const data = await api.get<Shift[]>("/api/v1/shifts/");
       writeCache(SHIFTS_CACHE, data);
       applyShifts(data);
     } catch (err) {
@@ -206,7 +206,7 @@ export default function ShiftsPage() {
     setBusy(true);
     setError("");
     try {
-      await api.post("/api/v1/shifts", {
+      await api.post("/api/v1/shifts/", {
         ...form,
         grace_period_minutes: Number(form.grace_period_minutes || 0),
         minimum_work_minutes: Number(form.minimum_work_minutes || 0),
@@ -263,7 +263,7 @@ export default function ShiftsPage() {
     setAssignSelection((cur) => ({ ...cur, [shift.id]: [] }));
     void loadAssignments(shift.id);
     void loadAllAssignments();
-    void loadEmployees();
+    if (employees.length === 0) void loadEmployees();
   };
 
   const saveShift = async (e: React.FormEvent) => {

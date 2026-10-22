@@ -559,10 +559,19 @@ def iclock_request_get(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/iclock/devicecmd", include_in_schema=False)
-def iclock_devicecmd(request: Request, db: Session = Depends(get_db)):
+@router.post("/iclock/devicecmd.aspx", include_in_schema=False)
+async def iclock_devicecmd(request: Request, db: Session = Depends(get_db)):
     """Device confirms it executed a command; acknowledge and clear the queue."""
-    _probe(db, request, "devicecmd")
+    body = (await request.body()).decode("utf-8", errors="ignore")
+    _probe(db, request, "devicecmd", body=body)
+    # The serial may be in the query string OR in the confirmation body
+    # (e.g. "SN=RAG...&CMD=DATA UPDATE ATTLOG"). Resolve it from either.
     sn = request.query_params.get("SN") or request.query_params.get("sn")
+    if not sn and body:
+        for token in body.replace("\r", "").replace("\n", "&").split("&"):
+            if token.upper().startswith("SN="):
+                sn = token.partition("=")[2].strip()
+                break
     if sn:
         _confirm_commands(db, sn)
     return PlainTextResponse("OK")

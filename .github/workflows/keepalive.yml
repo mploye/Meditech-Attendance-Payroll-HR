@@ -1,0 +1,30 @@
+name: Keep API Alive
+
+# Render's free tier sleeps a web service after ~15 minutes without traffic.
+# When the HRMS API sleeps, the eSSL attendance terminal's poll times out and
+# the device can stop reporting punches for a long time. This scheduled job
+# pings the health endpoint every 5 minutes so the service never sleeps.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping HRMS API
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Ping health endpoint
+        run: |
+          for i in 1 2 3 4; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 https://hrms-api-4trx.onrender.com/api/v1/health || echo 000)
+            echo "attempt $i -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "health endpoint did not respond with 200"
+          exit 1

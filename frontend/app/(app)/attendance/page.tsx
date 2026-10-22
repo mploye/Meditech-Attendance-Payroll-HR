@@ -40,6 +40,15 @@ type DailyRow = {
   breaks?: BreakSeg[];
 };
 
+type DeviceInfo = {
+  id: string;
+  name?: string;
+  serial_number?: string;
+  status?: string;
+  last_seen_at?: string | null;
+  last_sync_at?: string | null;
+};
+
 type SummaryRow = {
   employee_id: string;
   employee_code?: string;
@@ -137,6 +146,19 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [mobileIndex, setMobileIndex] = useState(0);
+  const [device, setDevice] = useState<DeviceInfo | null>(null);
+
+  const loadDevice = useCallback(async () => {
+    try {
+      const data = await api.get<{ items: DeviceInfo[] } | DeviceInfo[]>("/api/v1/devices/", {
+        page_size: 50,
+      });
+      const items = Array.isArray(data) ? data : data.items;
+      setDevice(items[0] ?? null);
+    } catch {
+      // device status is informational only
+    }
+  }, []);
 
   const activeRange = useMemo((): { from: string; to: string } => {
     if (tab === "daily") return { from: date, to: date };
@@ -200,11 +222,12 @@ export default function AttendancePage() {
     async (silent = false) => {
       if (tab === "daily") await loadDaily(silent);
       else await loadSummary(silent);
+      void loadDevice();
       setLastUpdated(
         new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
       );
     },
-    [tab, loadDaily, loadSummary]
+    [tab, loadDaily, loadSummary, loadDevice]
   );
 
   // initial + on tab/date change: process visible range, then load
@@ -317,6 +340,7 @@ export default function AttendancePage() {
 
       <Alert kind="error" message={error} />
       <Alert kind="success" message={notice} />
+      {device ? <DeviceBanner device={device} /> : null}
 
       {tab === "daily" ? (
         <Card>
@@ -647,6 +671,69 @@ function MiniStat({ label, value, tone }: { label: string; value: string; tone: 
       <div className={`text-sm font-semibold ${tone}`}>{value}</div>
     </div>
   );
+}
+
+function DeviceBanner({ device }: { device: DeviceInfo }) {
+  const [ageSec, setAgeSec] = useState<number | null>(null);
+
+  useEffect(() => {
+    const compute = () => {
+      if (!device.last_seen_at) {
+        setAgeSec(null);
+        return;
+      }
+      const seen = new Date(device.last_seen_at).getTime();
+      setAgeSec(Math.max(0, Math.round((Date.now() - seen) / 1000)));
+    };
+    compute();
+    const t = setInterval(compute, 10000);
+    return () => clearInterval(t);
+  }, [device.last_seen_at]);
+
+  const seen = device.last_seen_at ? new Date(device.last_seen_at) : null;
+  const online = ageSec !== null && ageSec <= 120;
+  const stale = ageSec !== null && ageSec > 600;
+
+  const tone = online
+    ? "border-green-200 bg-green-50 text-green-800"
+    : stale
+      ? "border-red-200 bg-red-50 text-red-800"
+      : "border-amber-200 bg-amber-50 text-amber-800";
+
+  const label = online
+    ? "Device connected — punches are uploading automatically"
+    : stale
+      ? "Device not reporting since " + ago(ageSec ?? 0)
+      : "Device last seen " + ago(ageSec ?? 0);
+
+  return (
+    <div
+      className={`mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-4 py-2.5 text-xs ${tone}`}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className={`h-2 w-2 rounded-full ${online ? "animate-pulse bg-green-500" : "bg-red-400"}`}
+        />
+        <span className="font-medium">{label}</span>
+        <span className="opacity-70">
+          {device.name || "Attendance device"}
+          {device.serial_number ? ` · ${device.serial_number}` : ""}
+        </span>
+      </div>
+      <span className="opacity-70">
+        {seen ? `Last contact ${seen.toLocaleTimeString()}` : "Never contacted"}
+      </span>
+    </div>
+  );
+}
+
+function ago(seconds: number): string {
+  if (seconds < 60) return `${seconds}s ago`;
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
 }
 
 function Stat({ label, value, tone }: { label: string; value: string; tone: "green" | "red" | "blue" }) {

@@ -133,6 +133,26 @@ function punchLabel(p: Punch): string {
 }
 
 const POLL_MS = 30000;
+const CACHE_PREFIX = "hrms.attendance.";
+
+function readCache<T>(key: string): T | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(CACHE_PREFIX + key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(key: string, value: unknown) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(CACHE_PREFIX + key, JSON.stringify(value));
+  } catch {
+    // storage unavailable — caching is best effort
+  }
+}
 
 export default function AttendancePage() {
   const [tab, setTab] = useState<Tab>("daily");
@@ -144,7 +164,7 @@ export default function AttendancePage() {
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string>("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [mobileIndex, setMobileIndex] = useState(0);
   const [device, setDevice] = useState<DeviceInfo | null>(null);
@@ -172,16 +192,24 @@ export default function AttendancePage() {
 
   const loadDaily = useCallback(
     async (silent = false) => {
-      if (!silent) setLoading(true);
+      const key = `daily:${date}`;
+      const cached = readCache<DailyRow[]>(key);
+      if (cached) {
+        setRows(cached);
+        setLoading(false);
+      } else if (!silent) {
+        setLoading(true);
+      }
       try {
         const data = await api.get<{ items: DailyRow[] }>("/api/v1/attendance/daily", {
           date,
           page_size: 200,
         });
         setRows(data.items);
+        writeCache(key, data.items);
         setError("");
       } catch (err) {
-        if (!silent) setError(err instanceof Error ? err.message : "Failed to load attendance");
+        if (!cached && !silent) setError(err instanceof Error ? err.message : "Failed to load attendance");
       } finally {
         if (!silent) setLoading(false);
       }
@@ -191,16 +219,24 @@ export default function AttendancePage() {
 
   const loadSummary = useCallback(
     async (silent = false) => {
-      if (!silent) setLoading(true);
+      const key = `summary:${activeRange.from}:${activeRange.to}`;
+      const cached = readCache<SummaryRow[]>(key);
+      if (cached) {
+        setSummary(cached);
+        setLoading(false);
+      } else if (!silent) {
+        setLoading(true);
+      }
       try {
         const data = await api.get<SummaryRow[]>("/api/v1/attendance/range-summary", {
           from_date: activeRange.from,
           to_date: activeRange.to,
         });
         setSummary(data);
+        writeCache(key, data);
         setError("");
       } catch (err) {
-        if (!silent) setError(err instanceof Error ? err.message : "Failed to load summary");
+        if (!cached && !silent) setError(err instanceof Error ? err.message : "Failed to load summary");
       } finally {
         if (!silent) setLoading(false);
       }
@@ -208,33 +244,26 @@ export default function AttendancePage() {
     [activeRange.from, activeRange.to]
   );
 
-  const processRange = useCallback(async () => {
-    try {
-      await api.post(
-        `/api/v1/attendance/process?from_date=${activeRange.from}&to_date=${activeRange.to}`,
-        undefined
-      );
-    } catch {
-      // processing is best-effort; ignore transient errors during live poll
-    }
-  }, [activeRange.from, activeRange.to]);
-
   const reload = useCallback(
     async (silent = false) => {
+      const device = loadDevice();
       if (tab === "daily") await loadDaily(silent);
       else await loadSummary(silent);
-      void loadDevice();
+      void device;
       setLastUpdated(formatTimeWithSeconds(new Date()));
     },
     [tab, loadDaily, loadSummary, loadDevice]
   );
 
-  // initial + on tab/date change: process visible range, then load
+  // Initial paint and tab/date changes load the visible data first. The
+  // attendance engine already recomputes on every device push and every
+  // minute in the background, so the page must not block on a manual
+  // reprocess (that call is slow and was causing multi-second loading).
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      await processRange();
-      if (!cancelled) await reload(false);
+      await reload(false);
+      if (cancelled) return;
     })();
     return () => {
       cancelled = true;
@@ -242,14 +271,14 @@ export default function AttendancePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, date]);
 
-  // live auto-poll every 30s
+  // live auto-poll every 30s (data only — no reprocess)
   useEffect(() => {
     if (!live) return;
     const t = setInterval(() => {
-      void processRange().then(() => reload(true));
+      void reload(true);
     }, POLL_MS);
     return () => clearInterval(t);
-  }, [live, processRange, reload]);
+  }, [live, reload]);
 
   const run = async (action: "sync" | "process") => {
     setBusy(true);

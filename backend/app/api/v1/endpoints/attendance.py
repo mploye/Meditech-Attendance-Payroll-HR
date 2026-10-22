@@ -2,14 +2,16 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import selectinload
 
 from api.deps import ensure_perm, get_current_user, get_db, orm_to_dict, resolve_company_id
 from core.audit import log_audit
 from core.errors import NotFoundError, ValidationError, success_response
-from core.timezone import company_now, local_date
+from core.timezone import company_now, get_zone, local_date
 from models.attendance import AttendanceDaily, AttendanceLog
 from models.employee import Employee
 from models.enums import AttendanceStatus, EventType, LogSource
+from models.shift import BreakLog
 from models.user import User
 from services import attendance_service, break_service, sync_service
 
@@ -49,64 +51,64 @@ def daily_attendance(
         )
     )
     pages = (total + page_size - 1) // page_size
+
+    employee_ids = [row.employee_id for row in rows]
+    employees: dict[str, Employee] = {}
+    logs_by_employee: dict[str, list[AttendanceLog]] = {}
+    breaks_by_employee: dict[str, list[dict]] = {}
+    if employee_ids:
+        employees = {
+            emp.id: emp
+            for emp in db.scalars(select(Employee).where(Employee.id.in_(employee_ids)))
+        }
+        zone = get_zone(_company_tz(db, cid))
+        day_start = datetime.combine(target, datetime.min.time(), tzinfo=zone).astimezone(timezone.utc)
+        day_end = day_start + timedelta(days=1)
+        for log in db.scalars(
+            select(AttendanceLog)
+            .where(
+                AttendanceLog.company_id == cid,
+                AttendanceLog.employee_id.in_(employee_ids),
+                AttendanceLog.event_timestamp >= day_start,
+                AttendanceLog.event_timestamp <= day_end,
+            )
+            .order_by(AttendanceLog.event_timestamp)
+        ):
+            logs_by_employee.setdefault(log.employee_id, []).append(log)
+        for entry in db.scalars(
+            select(BreakLog)
+            .where(
+                BreakLog.company_id == cid,
+                BreakLog.employee_id.in_(employee_ids),
+                BreakLog.break_date == target,
+            )
+            .options(selectinload(BreakLog.scheduled_break))
+            .order_by(BreakLog.start_time)
+        ):
+            breaks_by_employee.setdefault(entry.employee_id, []).append(break_service.break_dict(entry))
+
     items = []
     for row in rows:
         d = orm_to_dict(row)
-        emp = db.get(Employee, row.employee_id)
+        emp = employees.get(row.employee_id)
         d["employee_code"] = emp.employee_code if emp else None
         d["employee_name"] = f"{emp.first_name} {emp.last_name or ''}" if emp else None
         d["department_id"] = str(emp.department_id) if emp and emp.department_id else None
-        d["punches"] = _punch_sequence(db, cid, row.employee_id, target)
-        logged = break_service.list_day(db, cid, target, str(row.employee_id))
-        d["breaks"] = logged if logged else _derived_breaks(db, cid, row.employee_id, target)
+        logs = logs_by_employee.get(row.employee_id, [])
+        d["punches"] = [
+            {
+                "time": log.event_timestamp.isoformat(),
+                "event_type": eff.value,
+                "source": log.source.value if hasattr(log.source, "value") else str(log.source),
+            }
+            for log, eff in attendance_service.effective_punch_sequence(logs)
+        ]
+        logged = breaks_by_employee.get(row.employee_id)
+        d["breaks"] = logged if logged else attendance_service.break_segments(logs)
         items.append(d)
     return success_response(
         {"items": items, "total": total, "page": page, "page_size": page_size, "pages": pages}
     )
-
-
-def _day_logs(db, cid: str, employee_id: str, day: date) -> list[AttendanceLog]:
-    from sqlalchemy import select as sa_select
-
-    from core.timezone import get_zone
-
-    zone = get_zone(_company_tz(db, cid))
-    start = datetime.combine(day, datetime.min.time(), tzinfo=zone).astimezone(timezone.utc)
-    end = start + timedelta(days=1)
-    return list(
-        db.scalars(
-            sa_select(AttendanceLog)
-            .where(
-                AttendanceLog.company_id == cid,
-                AttendanceLog.employee_id == employee_id,
-                AttendanceLog.event_timestamp >= start,
-                AttendanceLog.event_timestamp <= end,
-            )
-            .order_by(AttendanceLog.event_timestamp)
-        )
-    )
-
-
-def _punch_sequence(db, cid: str, employee_id: str, day: date) -> list[dict]:
-    """Ordered IN/OUT punches for an employee on a day (powers the detail view).
-
-    Uses the alternating effective sequence so devices configured in
-    "check-in only" mode still show IN/OUT pairs.
-    """
-    logs = _day_logs(db, cid, employee_id, day)
-    return [
-        {
-            "time": log.event_timestamp.isoformat(),
-            "event_type": eff.value,
-            "source": log.source.value if hasattr(log.source, "value") else str(log.source),
-        }
-        for log, eff in attendance_service.effective_punch_sequence(logs)
-    ]
-
-
-def _derived_breaks(db, cid: str, employee_id: str, day: date) -> list[dict]:
-    """Break segments inferred from mid-day OUT -> IN gaps in the punch stream."""
-    return attendance_service.break_segments(_day_logs(db, cid, employee_id, day))
 
 
 @router.get("/range-summary")

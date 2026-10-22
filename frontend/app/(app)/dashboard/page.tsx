@@ -118,8 +118,12 @@ export default function DashboardPage() {
             return;
           }
         }
-        setSummary(await api.get<Summary>("/api/v1/dashboard/summary"));
-        setTrend(await api.get("/api/v1/dashboard/attendance-trend", { days: 14 }));
+        const [summaryData, trendData] = await Promise.all([
+          api.get<Summary>("/api/v1/dashboard/summary"),
+          api.get<{ date: string; present: number }[]>("/api/v1/dashboard/attendance-trend", { days: 14 }),
+        ]);
+        setSummary(summaryData);
+        setTrend(trendData);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load dashboard");
       }

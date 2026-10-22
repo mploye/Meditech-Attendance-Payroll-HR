@@ -5,6 +5,13 @@ const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const TOKEN_KEY = "hrms.token";
 const USER_KEY = "hrms.user";
 
+const GET_CACHE_TTL_MS = 20_000;
+const getCache = new Map<string, { at: number; data: unknown }>();
+
+function invalidateGetCache() {
+  getCache.clear();
+}
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return window.localStorage.getItem(TOKEN_KEY);
@@ -13,6 +20,7 @@ export function getToken(): string | null {
 export function setAuth(token: string, user: Record<string, unknown>) {
   window.localStorage.setItem(TOKEN_KEY, token);
   window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+  invalidateGetCache();
 }
 
 export function getStoredUser(): Record<string, unknown> | null {
@@ -27,6 +35,7 @@ export function getStoredUser(): Record<string, unknown> | null {
 export function clearAuth() {
   window.localStorage.removeItem(TOKEN_KEY);
   window.localStorage.removeItem(USER_KEY);
+  invalidateGetCache();
 }
 
 async function request<T>(
@@ -91,7 +100,7 @@ async function request<T>(
 }
 
 export const api = {
-  get: <T,>(path: string, qs?: Record<string, string | number | undefined>) => {
+  get: async <T,>(path: string, qs?: Record<string, string | number | undefined>, opts: { fresh?: boolean } = {}) => {
     const search = qs
       ? "?" +
         Object.entries(qs)
@@ -99,12 +108,35 @@ export const api = {
           .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
           .join("&")
       : "";
-    return request<T>("GET", path + search);
+    const url = path + search;
+    const cached = getCache.get(url);
+    if (!opts.fresh && cached && Date.now() - cached.at < GET_CACHE_TTL_MS) {
+      return cached.data as T;
+    }
+    const data = await request<T>("GET", url);
+    getCache.set(url, { at: Date.now(), data });
+    return data;
   },
-  post: <T,>(path: string, body?: unknown) => request<T>("POST", path, body),
-  patch: <T,>(path: string, body?: unknown) => request<T>("PATCH", path, body),
-  put: <T,>(path: string, body?: unknown) => request<T>("PUT", path, body),
-  del: <T,>(path: string) => request<T>("DELETE", path),
+  post: async <T,>(path: string, body?: unknown) => {
+    const data = await request<T>("POST", path, body);
+    invalidateGetCache();
+    return data;
+  },
+  patch: async <T,>(path: string, body?: unknown) => {
+    const data = await request<T>("PATCH", path, body);
+    invalidateGetCache();
+    return data;
+  },
+  put: async <T,>(path: string, body?: unknown) => {
+    const data = await request<T>("PUT", path, body);
+    invalidateGetCache();
+    return data;
+  },
+  del: async <T,>(path: string) => {
+    const data = await request<T>("DELETE", path);
+    invalidateGetCache();
+    return data;
+  },
   download: (path: string) => request<Response>("GET", path, undefined, { raw: true }),
   login: (email: string, password: string) =>
     request<{ access_token: string; user: Record<string, unknown> }>("POST", "/api/v1/auth/login", {

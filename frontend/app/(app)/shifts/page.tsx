@@ -71,6 +71,7 @@ export default function ShiftsPage() {
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<Shift | null>(null);
+  const [assigning, setAssigning] = useState<Shift | null>(null);
   const [editForm, setEditForm] = useState<Record<string, string>>({});
   const [breakForm, setBreakForm] = useState<Record<string, string>>(EMPTY_BREAK_FORM);
   const [schedules, setSchedules] = useState<Record<string, ShiftBreak[]>>({});
@@ -139,9 +140,12 @@ export default function ShiftsPage() {
   }, []);
 
   useEffect(() => {
-    if (!editing) return;
+    if (!editing && !assigning) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setEditing(null);
+      if (event.key === "Escape") {
+        setEditing(null);
+        setAssigning(null);
+      }
     };
     document.addEventListener("keydown", onKey);
     const previous = document.body.style.overflow;
@@ -150,7 +154,7 @@ export default function ShiftsPage() {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = previous;
     };
-  }, [editing]);
+  }, [editing, assigning]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -183,7 +187,8 @@ export default function ShiftsPage() {
     }
   };
 
-  const startEdit = (shift: Shift, focusEmployees = false) => {
+  const startEdit = (shift: Shift) => {
+    setAssigning(null);
     setEditing(shift);
     setEditForm({
       name: shift.name || "",
@@ -205,11 +210,15 @@ export default function ShiftsPage() {
     setBreakForm(EMPTY_BREAK_FORM);
     void loadAssignments(shift.id);
     void loadAllAssignments();
-    if (focusEmployees) {
-      window.setTimeout(() => {
-        document.getElementById("assign-employees")?.scrollIntoView({ block: "start", behavior: "smooth" });
-      }, 100);
-    }
+  };
+
+  const startAssign = (shift: Shift) => {
+    setEditing(null);
+    setAssigning(shift);
+    setAssignSelection((cur) => ({ ...cur, [shift.id]: [] }));
+    void loadAssignments(shift.id);
+    void loadAllAssignments();
+    void loadEmployees();
   };
 
   const saveShift = async (e: React.FormEvent) => {
@@ -471,7 +480,7 @@ export default function ShiftsPage() {
                         )}
                         <button
                           type="button"
-                          onClick={() => startEdit(s, true)}
+                          onClick={() => startAssign(s)}
                           aria-label={`Add employees to ${s.name}`}
                           className="rounded border border-brand-200 bg-white px-1.5 py-0.5 text-xs font-medium text-brand-700 hover:bg-brand-50"
                         >
@@ -551,84 +560,6 @@ export default function ShiftsPage() {
                 </div>
               </form>
 
-              <div id="assign-employees" className="mt-6 border-t border-neutral-100 pt-5">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Assigned employees</h4>
-                {assignLoading === editing.id ? (
-                  <p className="mt-2 text-sm text-neutral-400">Loading…</p>
-                ) : (assignments[editing.id] || []).length === 0 ? (
-                  <Empty text="No employees assigned to this shift yet" />
-                ) : (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {(assignments[editing.id] || []).map((a) => (
-                      <span key={a.id} className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-white px-3 py-1.5 text-sm">
-                        <span className="font-medium text-neutral-800">{a.employee_name || a.employee_code}</span>
-                        <span className="text-neutral-400">
-                          {a.employee_code}
-                          {a.effective_from ? ` · from ${a.effective_from}` : ""}
-                          {a.effective_to ? ` · to ${a.effective_to}` : ""}
-                        </span>
-                        <button
-                          onClick={() => unassign(editing.id, a.id)}
-                          className="text-xs text-rose-600 hover:underline"
-                          disabled={busy}
-                        >
-                          Remove
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                <div className="mt-3 rounded-lg border border-neutral-200 bg-white p-3">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <Input
-                      label="Search employees"
-                      placeholder="Name or code"
-                      value={assignSearch[editing.id] || ""}
-                      onChange={(v) => setAssignSearch((cur) => ({ ...cur, [editing.id]: v }))}
-                    />
-                    <Input
-                      label="Effective from"
-                      type="date"
-                      value={assignFrom[editing.id] || ""}
-                      onChange={(v) => setAssignFrom((cur) => ({ ...cur, [editing.id]: v }))}
-                    />
-                    <div className="flex items-end">
-                      <Button
-                        onClick={() => void assignEmployees(editing.id)}
-                        disabled={busy || !(assignSelection[editing.id] || []).length}
-                      >
-                        Assign selected ({(assignSelection[editing.id] || []).length})
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="mt-3 max-h-48 overflow-y-auto rounded border border-neutral-100">
-                    {availableEmployees(editing.id).length === 0 ? (
-                      <p className="px-3 py-2 text-sm text-neutral-400">
-                        {employees.length === 0
-                          ? "No active employees found."
-                          : "All matching employees are already assigned to a shift."}
-                      </p>
-                    ) : (
-                      availableEmployees(editing.id).map((e) => (
-                        <label
-                          key={e.id}
-                          className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-neutral-50"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={(assignSelection[editing.id] || []).includes(e.id)}
-                            onChange={() => toggleEmployee(editing.id, e.id)}
-                          />
-                          <span className="font-medium text-neutral-800">{e.employee_code}</span>
-                          <span className="text-neutral-500">{employeeName(e)}</span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-
               <div className="mt-6 border-t border-neutral-100 pt-5">
                 <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Scheduled breaks</h4>
                 {(schedules[editing.id] || []).length === 0 ? (
@@ -689,6 +620,117 @@ export default function ShiftsPage() {
                 Delete shift
               </Button>
               <Button variant="secondary" onClick={() => setEditing(null)}>Close</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {assigning ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="shift-assign-title"
+          onClick={() => setAssigning(null)}
+        >
+          <div
+            className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl md:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4">
+              <div>
+                <h3 id="shift-assign-title" className="text-base font-semibold text-neutral-800">Assigned employees</h3>
+                <p className="text-xs text-neutral-400">{assigning.name}</p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setAssigning(null)}
+                className="rounded-lg px-2 py-1 text-xl leading-none text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="overflow-y-auto px-5 py-4">
+              {assignLoading === assigning.id ? (
+                <p className="text-sm text-neutral-400">Loading…</p>
+              ) : (assignments[assigning.id] || []).length === 0 ? (
+                <Empty text="No employees assigned to this shift yet" />
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {(assignments[assigning.id] || []).map((a) => (
+                    <span key={a.id} className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-white px-3 py-1.5 text-sm">
+                      <span className="font-medium text-neutral-800">{a.employee_name || a.employee_code}</span>
+                      <span className="text-neutral-400">
+                        {a.employee_code}
+                        {a.effective_from ? ` · from ${a.effective_from}` : ""}
+                        {a.effective_to ? ` · to ${a.effective_to}` : ""}
+                      </span>
+                      <button
+                        onClick={() => unassign(assigning.id, a.id)}
+                        className="text-xs text-rose-600 hover:underline"
+                        disabled={busy}
+                      >
+                        Remove
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-4 rounded-lg border border-neutral-200 bg-white p-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Input
+                    label="Search employees"
+                    placeholder="Name or code"
+                    value={assignSearch[assigning.id] || ""}
+                    onChange={(v) => setAssignSearch((cur) => ({ ...cur, [assigning.id]: v }))}
+                  />
+                  <Input
+                    label="Effective from"
+                    type="date"
+                    value={assignFrom[assigning.id] || ""}
+                    onChange={(v) => setAssignFrom((cur) => ({ ...cur, [assigning.id]: v }))}
+                  />
+                  <div className="flex items-end">
+                    <Button
+                      onClick={() => void assignEmployees(assigning.id)}
+                      disabled={busy || !(assignSelection[assigning.id] || []).length}
+                    >
+                      Assign selected ({(assignSelection[assigning.id] || []).length})
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-3 max-h-60 overflow-y-auto rounded border border-neutral-100">
+                  {availableEmployees(assigning.id).length === 0 ? (
+                    <p className="px-3 py-2 text-sm text-neutral-400">
+                      {employees.length === 0
+                        ? "No active employees found."
+                        : "All matching employees are already assigned to a shift."}
+                    </p>
+                  ) : (
+                    availableEmployees(assigning.id).map((e) => (
+                      <label
+                        key={e.id}
+                        className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-neutral-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={(assignSelection[assigning.id] || []).includes(e.id)}
+                          onChange={() => toggleEmployee(assigning.id, e.id)}
+                        />
+                        <span className="font-medium text-neutral-800">{e.employee_code}</span>
+                        <span className="text-neutral-500">{employeeName(e)}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-neutral-100 px-5 py-3">
+              <Button variant="secondary" onClick={() => setAssigning(null)}>Close</Button>
             </div>
           </div>
         </div>

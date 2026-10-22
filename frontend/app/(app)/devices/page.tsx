@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { formatTime } from "@/lib/datetime";
 import { Alert, Badge, Button, Card, CardHeader, Empty, Input, PageHeader, Select, statusTone } from "@/components/ui";
 
 type Device = {
@@ -16,6 +17,9 @@ type Device = {
   location?: string;
   status: string;
   last_sync_at?: string;
+  last_seen_at?: string | null;
+  last_punch_at?: string | null;
+  clock_drift_minutes?: number | null;
   enabled?: boolean;
 };
 
@@ -128,6 +132,7 @@ export default function DevicesPage() {
                   <th className="px-5 py-3 font-medium">Type</th>
                   <th className="px-5 py-3 font-medium">IP</th>
                   <th className="px-5 py-3 font-medium">Status</th>
+                  <th className="px-5 py-3 font-medium">Last contact / punch</th>
                   <th className="px-5 py-3 font-medium text-right">Actions</th>
                 </tr>
               </thead>
@@ -147,6 +152,17 @@ export default function DevicesPage() {
                     </td>
                     <td data-label="Status" className="px-5 py-3">
                       <Badge tone={statusTone(d.status)}>{d.status}</Badge>
+                      {d.clock_drift_minutes != null && Math.abs(d.clock_drift_minutes) >= 90 ? (
+                        <div className="mt-1 text-[11px] font-medium text-amber-600">
+                          Clock {Math.abs(d.clock_drift_minutes)} min {d.clock_drift_minutes < 0 ? "behind" : "ahead"}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td data-label="Last contact" className="px-5 py-3 text-neutral-500">
+                      <div>Contact {d.last_seen_at ? formatTime(d.last_seen_at) : "—"}</div>
+                      <div className="text-xs text-neutral-400">
+                        Punch {d.last_punch_at ? formatTime(d.last_punch_at) : "—"}
+                      </div>
                     </td>
                     <td className="actions px-5 py-3 text-right">
                       <div className="flex justify-end gap-2">

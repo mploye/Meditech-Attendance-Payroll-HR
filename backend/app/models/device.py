@@ -31,6 +31,9 @@ class Device(PKMixin, TimestampMixin, Base):
     )
     last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_punch_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    timezone: Mapped[Optional[str]] = mapped_column(String(64), default="Asia/Kolkata")
+    clock_drift_minutes: Mapped[Optional[int]] = mapped_column(Integer)
 
 
 class ESSLConfig(PKMixin, TimestampMixin, Base):

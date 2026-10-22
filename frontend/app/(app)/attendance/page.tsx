@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import { dateKey, formatTime, formatTimeWithSeconds } from "@/lib/datetime";
 import { Alert, Badge, Button, Card, CardHeader, Empty, Input, PageHeader, statusTone } from "@/components/ui";
 
 type Punch = {
@@ -46,7 +47,9 @@ type DeviceInfo = {
   serial_number?: string;
   status?: string;
   last_seen_at?: string | null;
+  last_punch_at?: string | null;
   last_sync_at?: string | null;
+  clock_drift_minutes?: number | null;
 };
 
 type SummaryRow = {
@@ -71,7 +74,7 @@ function ymd(d: Date): string {
 }
 
 function today(): string {
-  return ymd(new Date());
+  return dateKey(new Date());
 }
 
 function startOfWeek(iso: string): string {
@@ -104,9 +107,7 @@ function hours(minutes?: number): string {
 
 function hhmm(value?: string): string {
   if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value).slice(11, 16) || "—";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+  return formatTime(value);
 }
 
 function mins(value?: number): string {
@@ -223,9 +224,7 @@ export default function AttendancePage() {
       if (tab === "daily") await loadDaily(silent);
       else await loadSummary(silent);
       void loadDevice();
-      setLastUpdated(
-        new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-      );
+      setLastUpdated(formatTimeWithSeconds(new Date()));
     },
     [tab, loadDaily, loadSummary, loadDevice]
   );
@@ -674,45 +673,58 @@ function MiniStat({ label, value, tone }: { label: string; value: string; tone: 
 }
 
 function DeviceBanner({ device }: { device: DeviceInfo }) {
-  const [ageSec, setAgeSec] = useState<number | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   useEffect(() => {
-    const compute = () => {
-      if (!device.last_seen_at) {
-        setAgeSec(null);
-        return;
-      }
-      const seen = new Date(device.last_seen_at).getTime();
-      setAgeSec(Math.max(0, Math.round((Date.now() - seen) / 1000)));
-    };
-    compute();
-    const t = setInterval(compute, 10000);
+    const t = setInterval(() => setNowTick(Date.now()), 10000);
     return () => clearInterval(t);
-  }, [device.last_seen_at]);
+  }, []);
 
-  const seen = device.last_seen_at ? new Date(device.last_seen_at) : null;
-  const online = ageSec !== null && ageSec <= 120;
-  const stale = ageSec !== null && ageSec > 600;
+  const ageOf = (value?: string | null): number | null => {
+    if (!value) return null;
+    const t = new Date(value).getTime();
+    if (Number.isNaN(t)) return null;
+    return Math.max(0, Math.round((nowTick - t) / 1000));
+  };
 
-  const tone = online
-    ? "border-green-200 bg-green-50 text-green-800"
-    : stale
-      ? "border-red-200 bg-red-50 text-red-800"
-      : "border-amber-200 bg-amber-50 text-amber-800";
+  const contactAge = ageOf(device.last_seen_at);
+  const punchAge = ageOf(device.last_punch_at);
+  const drift = device.clock_drift_minutes ?? null;
 
-  const label = online
-    ? "Device connected — punches are uploading automatically"
-    : stale
-      ? "Device not reporting since " + ago(ageSec ?? 0)
-      : "Device last seen " + ago(ageSec ?? 0);
+  const offline = contactAge === null || contactAge > 180;
+  const connectedNoPunch = !offline && (punchAge === null || punchAge > 900);
+  const clockOff = drift !== null && Math.abs(drift) >= 90;
+
+  const tone = offline
+    ? "border-red-200 bg-red-50 text-red-800"
+    : "border-amber-200 bg-amber-50 text-amber-800";
+
+  const label =
+    contactAge === null
+      ? "Device has never contacted the server"
+      : offline
+        ? "Device not reporting since " + ago(contactAge)
+        : connectedNoPunch
+          ? punchAge === null
+            ? "Device connected but no punches received yet"
+            : "Device connected but not sending punches — last punch " + ago(punchAge)
+          : clockOff
+            ? `Device clock is ${Math.floor(Math.abs(drift) / 60)}h ${Math.abs(drift) % 60}m ${drift < 0 ? "behind" : "ahead"}`
+            : "Device connected — punches are uploading automatically";
+
+  const healthy = !offline && !connectedNoPunch && !clockOff;
 
   return (
     <div
-      className={`mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-4 py-2.5 text-xs ${tone}`}
+      className={`mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-4 py-2.5 text-xs ${
+        healthy ? "border-green-200 bg-green-50 text-green-800" : tone
+      }`}
     >
       <div className="flex items-center gap-2">
         <span
-          className={`h-2 w-2 rounded-full ${online ? "animate-pulse bg-green-500" : "bg-red-400"}`}
+          className={`h-2 w-2 rounded-full ${
+            healthy ? "animate-pulse bg-green-500" : offline ? "bg-red-500" : "bg-amber-500"
+          }`}
         />
         <span className="font-medium">{label}</span>
         <span className="opacity-70">
@@ -721,7 +733,8 @@ function DeviceBanner({ device }: { device: DeviceInfo }) {
         </span>
       </div>
       <span className="opacity-70">
-        {seen ? `Last contact ${seen.toLocaleTimeString()}` : "Never contacted"}
+        {device.last_seen_at ? `Last contact ${formatTime(device.last_seen_at)}` : "Never contacted"}
+        {device.last_punch_at ? ` · Last punch ${formatTime(device.last_punch_at)}` : ""}
       </span>
     </div>
   );

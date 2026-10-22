@@ -223,3 +223,37 @@ def test_handshake_endpoints_respond(client):
     assert client.post("/iclock/request", content="x").status_code == 200
     assert client.get("/iclock/request?SN=ORCUS123").status_code == 200
     assert client.post("/iclock/devicecmd", content="x").status_code == 200
+
+
+def test_getrequest_triggers_attlog_upload_for_quiet_device(client, env):
+    r = client.get("/iclock/getrequest.aspx?SN=ORCUS123")
+    assert r.status_code == 200
+    assert "DATA UPDATE ATTLOG" in r.text
+
+
+def test_getrequest_does_not_requeue_right_after_push(client, env):
+    _push(client, "USERID=A001\tCHECKTIME=2026-10-12 09:00:00\tCHECKTYPE=I")
+    assert client.get("/iclock/getrequest.aspx?SN=ORCUS123").text == ""
+
+
+def test_cdata_sets_last_punch_and_clock_drift(client, env, db):
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+
+    device_now = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Kolkata"))
+    stamp = (device_now - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+    r = _push(client, f"USERID=A001\tCHECKTIME={stamp}\tCHECKTYPE=I")
+    assert r.status_code == 200
+
+    db.refresh(env["device"])
+    assert env["device"].last_punch_at is not None
+    assert env["device"].clock_drift_minutes is not None
+    assert env["device"].clock_drift_minutes <= -90
+
+
+def test_parse_device_info_extracts_lan_ip():
+    from api.v1.endpoints.iclock import _parse_device_info
+
+    info = _parse_device_info("ZAM70-NF24HE-Ver3.8.4,12,13,2093,192.168.1.36,10,40")
+    assert info["ip"] == "192.168.1.36"
+    assert info["raw"].startswith("ZAM70")

@@ -101,10 +101,6 @@ export default function BreaksPage() {
   }, [isEmployee, date, loadSelf, loadAdmin]);
 
   useEffect(() => {
-    if (!isEmployee) void loadAdmin(date);
-  }, [date, isEmployee, loadAdmin]);
-
-  useEffect(() => {
     const interval = setInterval(() => setActive((a) => (a ? { ...a } : a)), 30_000);
     return () => clearInterval(interval);
   }, []);

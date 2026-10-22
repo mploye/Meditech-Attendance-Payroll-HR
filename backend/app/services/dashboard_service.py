@@ -1,5 +1,5 @@
 import calendar
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
@@ -134,6 +134,46 @@ def summary(db: Session, company_id: str, day: date) -> dict:
             Device.status == DeviceStatus.OFFLINE,
         )
     )
+    total_devices = db.scalar(
+        select(func.count(Device.id)).where(Device.company_id == company_id)
+    )
+
+    now = datetime.now(timezone.utc)
+    device_alerts: list[dict] = []
+    for device in db.scalars(select(Device).where(Device.company_id == company_id)):
+        seen = device.last_seen_at
+        if seen is not None and seen.tzinfo is None:
+            seen = seen.replace(tzinfo=timezone.utc)
+        punch = device.last_punch_at
+        if punch is not None and punch.tzinfo is None:
+            punch = punch.replace(tzinfo=timezone.utc)
+        contact_age = int((now - seen).total_seconds()) if seen else None
+        punch_age = int((now - punch).total_seconds()) if punch else None
+        drift = device.clock_drift_minutes
+
+        if contact_age is None or contact_age > 180:
+            reason, tone = "Device not reporting", "error"
+        elif punch is not None and punch_age > 900:
+            reason, tone = "Connected but not sending punches", "warn"
+        elif drift is not None and abs(drift) >= 90:
+            reason, tone = f"Device clock is {abs(drift)} min {'behind' if drift < 0 else 'ahead'}", "warn"
+        else:
+            continue
+
+        device_alerts.append(
+            {
+                "id": str(device.id),
+                "name": device.name,
+                "serial_number": device.serial_number,
+                "reason": reason,
+                "tone": tone,
+                "last_seen_at": seen.isoformat() if seen else None,
+                "last_punch_at": punch.isoformat() if punch else None,
+                "minutes_silent": round(contact_age / 60) if contact_age is not None else None,
+                "clock_drift_minutes": drift,
+            }
+        )
+
     return {
         "total_employees": int(total_employees or 0),
         "present_today": int(present_today or 0),
@@ -146,6 +186,8 @@ def summary(db: Session, company_id: str, day: date) -> dict:
         "payroll_amount": payroll_amount,
         "devices_online": int(onlines or 0),
         "devices_offline": int(offlines or 0),
+        "devices_total": int(total_devices or 0),
+        "device_alerts": device_alerts,
     }
 
 

@@ -41,6 +41,14 @@ def start_scheduler() -> BackgroundScheduler | None:
         coalesce=True,
     )
     _scheduler.add_job(
+        attendance_job.process_today_for_all_companies,
+        trigger="interval",
+        seconds=settings.ATTENDANCE_PROCESS_INTERVAL_SECONDS,
+        id="live_attendance_processing",
+        max_instances=1,
+        coalesce=True,
+    )
+    _scheduler.add_job(
         attendance_job.process_yesterday_for_all_companies,
         trigger="cron",
         hour=0,

@@ -13,6 +13,8 @@ eSSL format and the legacy positional ZKTeco ATTLOG format are accepted.
 """
 
 import logging
+import re
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -44,7 +46,15 @@ router = APIRouter()
 # re-push its stored attendance log (e.g. the device cursor drifted to the
 # "9999 already-synced" sentinel and stopped uploading).
 ATTLOG_REUPLOAD_CMD = "DATA UPDATE ATTLOG"
-ATTLOG_REUPLOAD_INTERVAL_SEC = 60
+# How long the device may go without pushing punch data before we ask again.
+# The terminal polls getrequest every ~5s, so 15s keeps delivery within
+# ~5-20s while still bounding how often a full re-upload is requested.
+ATTLOG_REUPLOAD_INTERVAL_SEC = 15
+# A device that has not polled for this long is treated as offline.
+DEVICE_OFFLINE_AFTER_SEC = 180
+# Serialises immediate attendance recomputation so concurrent pushes from
+# multiple devices cannot race on the same daily rows.
+_PROCESS_LOCK = threading.Lock()
 
 
 def queue_command(sn: str, command: str, company_id: Optional[str] = None) -> None:
@@ -147,6 +157,73 @@ def _cmd_counter() -> int:
     """Monotonic-ish command id for the ``C:<id>:<cmd>`` reply envelope."""
     return int(datetime.now(timezone.utc).timestamp())
 
+
+_IPV4_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
+
+
+def _parse_device_info(info: str) -> dict:
+    """Best-effort parse of the ``INFO=`` blob on ``/iclock/getrequest``.
+
+    Observed on the AiFace-Orcus:
+    ``ZAM70-NF24HE-Ver3.8.4,12,13,2093,192.168.1.36,10,40,...``
+    Field meanings vary by firmware, so only fields we can identify safely are
+    extracted; the raw string is kept for diagnostics.
+    """
+    text = (info or "").strip()
+    if not text:
+        return {}
+    parts = [part.strip() for part in text.split(",")]
+    result: dict = {"raw": text, "fields": parts}
+    for part in parts:
+        if _IPV4_RE.match(part):
+            result["ip"] = part
+            break
+    return result
+
+
+def _aware(value: Optional[datetime]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _request_attlog_if_stale(db: Session, device: "Device") -> None:
+    """Ask a polling device to upload attendance when it has gone quiet.
+
+    Called on every ``getrequest`` (the terminal polls every ~5s). The
+    in-flight guard means we only send one command at a time, so this does not
+    flood the device; a full re-upload is therefore requested at most once per
+    ATTLOG_REUPLOAD_INTERVAL_SEC. This replaces the old 60-second background
+    delay and normally delivers punches within ~5-20 seconds.
+    """
+    now = datetime.now(timezone.utc)
+    last_push = _aware(device.last_punch_at)
+    if last_push is not None and (now - last_push).total_seconds() <= ATTLOG_REUPLOAD_INTERVAL_SEC:
+        return
+
+    cutoff = now - timedelta(minutes=2)
+    in_flight = db.scalar(
+        select(DeviceCommand.id).where(
+            DeviceCommand.serial_number == device.serial_number,
+            DeviceCommand.confirmed.is_(False),
+            (DeviceCommand.delivered.is_(False)) | (DeviceCommand.delivered_at >= cutoff),
+        )
+    )
+    if in_flight is not None:
+        return
+
+    queue_command(
+        device.serial_number,
+        ATTLOG_REUPLOAD_CMD,
+        company_id=str(device.company_id),
+    )
+
+
+def _device_zone(device: "Device", company_tz: str):
+    """Timezone the device's wall-clock timestamps are expressed in."""
+    return get_zone(device.timezone or company_tz)
 
 
 def _probe(db: Session, request: Request, endpoint: str, sn=None, body=""):
@@ -432,7 +509,9 @@ def iclock_cdata_options(request: Request, db: Session = Depends(get_db)):
         device.status = DeviceStatus.ONLINE
         db.commit()
 
-    last_push = _last_attlog_at(db, sn)
+    last_push = _aware(device.last_punch_at) if device is not None else None
+    if last_push is None:
+        last_push = _last_attlog_at(db, sn)
     stale = last_push is None or (datetime.now(timezone.utc) - last_push).total_seconds() > ATTLOG_REUPLOAD_INTERVAL_SEC
     has_pending = db.scalar(
         select(DeviceCommand.id).where(
@@ -479,9 +558,11 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
         _create_employees_from_users(db, device, user_records)
 
     company_id = str(device.company_id)
-    company_tz = get_zone(_company_timezone(db, company_id))
+    company_tz_name = _company_timezone(db, company_id)
+    device_tz = _device_zone(device, company_tz_name)
 
     inserted = duplicates = failed = 0
+    newest_device_ts: Optional[datetime] = None
     last_type: dict[str, Optional[EventType]] = {}
     for record in punch_records:
         device_user_id = str(record.get("USERID") or "").strip()
@@ -490,6 +571,8 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
         if not device_user_id or naive_ts is None:
             failed += 1
             continue
+        if newest_device_ts is None or naive_ts > newest_device_ts:
+            newest_device_ts = naive_ts
 
         event_type = _record_event_type(record)
         if event_type is None:
@@ -497,7 +580,7 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
             event_type = EventType.OUT if prev == EventType.IN else EventType.IN
         last_type[device_user_id] = event_type
 
-        aware_ts = naive_ts.replace(tzinfo=company_tz).astimezone(timezone.utc)
+        aware_ts = naive_ts.replace(tzinfo=device_tz).astimezone(timezone.utc)
         employee_id = _resolve_device_employee(db, company_id, str(device.id), device_user_id)
         if employee_id is None:
             failed += 1
@@ -519,35 +602,75 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
         else:
             duplicates += 1
 
-    device.last_seen_at = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    device.last_seen_at = now
     device.status = DeviceStatus.ONLINE
+    if newest_device_ts is not None:
+        device.last_punch_at = now
+        # Device clock vs company-local wall clock: a large gap silently shifts
+        # every punch and corrupts payroll, so record it for the UI to surface.
+        local_now = now.astimezone(device_tz).replace(tzinfo=None)
+        device.clock_drift_minutes = int((newest_device_ts - local_now).total_seconds() // 60)
     db.commit()
     if serial:
         _confirm_commands(db, serial)
     logger.info(
-        "iclock push SN=%s: received=%d inserted=%d dup=%d failed=%d users=%d",
+        "iclock push SN=%s: received=%d inserted=%d dup=%d failed=%d users=%d drift=%s min",
         serial,
         len(punch_records),
         inserted,
         duplicates,
         failed,
         len(user_records),
+        device.clock_drift_minutes,
     )
+    if inserted:
+        _process_company_today(company_id)
     return PlainTextResponse("OK")
+
+
+def _process_company_today(company_id: str) -> None:
+    """Recompute today's attendance rows right after punches arrive."""
+    if not _PROCESS_LOCK.acquire(blocking=False):
+        return
+    db = SessionLocal()
+    try:
+        today = datetime.now(timezone.utc).astimezone(get_zone(_company_timezone(db, company_id))).date()
+        attendance_service.process_range(db, company_id, today, today)
+        logger.info("Immediate attendance processing for company %s (%s) done", company_id, today)
+    except Exception:
+        logger.exception("Immediate attendance processing failed for company %s", company_id)
+    finally:
+        db.close()
+        _PROCESS_LOCK.release()
 
 
 @router.api_route("/iclock/getrequest", methods=["GET", "POST"], include_in_schema=False)
 @router.api_route("/iclock/getrequest.aspx", methods=["GET", "POST"], include_in_schema=False)
 def iclock_getrequest(request: Request, db: Session = Depends(get_db)):
-    """Command channel probe. Empty response = no pending commands for the device.
+    """Command channel probe and fast attendance trigger.
 
-    eSSL Orcus firmware calls ``/iclock/getrequest.aspx?SN=...`` every ~7s.
-    If a server->device command is queued for this serial we return it as
-    ``C:<id>:<command>``; otherwise an EMPTY body means "nothing to do".
+    The terminal polls this endpoint every ~5s. Besides returning any queued
+    command, the poll doubles as a heartbeat: when the device has not pushed
+    punch data for ATTLOG_REUPLOAD_INTERVAL_SEC we ask it to upload now. That
+    removes the old 60-second background lag, so punches normally reach the
+    portal within ~5-20 seconds.
     """
-    sn = request.query_params.get("SN") or request.query_params.get("sn")
+    params = request.query_params
+    sn = params.get("SN") or params.get("sn")
+    info = _parse_device_info(params.get("INFO") or params.get("info") or "")
+
+    device = _device_for_serial(db, sn) if sn else None
+    if device is not None:
+        device.last_seen_at = datetime.now(timezone.utc)
+        device.status = DeviceStatus.ONLINE
+        if info.get("ip"):
+            device.ip_address = info["ip"]
+        db.commit()
+        _request_attlog_if_stale(db, device)
+
     command = _pop_command(db, sn) if sn else None
-    _probe(db, request, "getrequest", sn=sn, body=command or "")
+    _probe(db, request, "getrequest", sn=sn, body=command or info.get("raw", ""))
     if command:
         return PlainTextResponse(f"C:{_cmd_counter()}:{command}")
     return PlainTextResponse("")

@@ -4,6 +4,18 @@ import { useEffect, useState } from "react";
 import { api, getStoredUser } from "@/lib/api";
 import { Alert, Card, PageHeader, Empty } from "@/components/ui";
 
+type DeviceAlert = {
+  id: string;
+  name: string;
+  serial_number: string;
+  reason: string;
+  tone: "error" | "warn";
+  last_seen_at?: string | null;
+  last_punch_at?: string | null;
+  minutes_silent?: number | null;
+  clock_drift_minutes?: number | null;
+};
+
 type Summary = {
   total_employees: number;
   present_today: number;
@@ -15,6 +27,8 @@ type Summary = {
   payroll_amount: number;
   devices_online: number;
   devices_offline: number;
+  devices_total: number;
+  device_alerts: DeviceAlert[];
 };
 
 type MetricDetailRow = {
@@ -134,6 +148,37 @@ export default function DashboardPage() {
     <div>
       <PageHeader title="Dashboard" subtitle="Company overview for today" />
       <Alert kind="error" message={error} />
+
+      {summary && summary.device_alerts?.length > 0 ? (
+        <div className="mb-4 space-y-2">
+          {summary.device_alerts.map((alert) => (
+            <div
+              key={alert.id}
+              className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-4 py-2.5 text-xs ${
+                alert.tone === "error"
+                  ? "border-red-200 bg-red-50 text-red-800"
+                  : "border-amber-200 bg-amber-50 text-amber-800"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    alert.tone === "error" ? "bg-red-500" : "bg-amber-500"
+                  }`}
+                />
+                <span className="font-semibold">{alert.reason}</span>
+                <span className="opacity-70">
+                  {alert.name}
+                  {alert.serial_number ? ` · ${alert.serial_number}` : ""}
+                </span>
+              </div>
+              <a href="/devices" className="font-medium underline underline-offset-2">
+                Check device
+              </a>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {METRIC_LABELS.map((m) => {
@@ -267,6 +312,10 @@ export default function DashboardPage() {
             <h3 className="text-sm font-semibold text-neutral-800">Devices</h3>
           </div>
           <div className="space-y-3 px-5 py-4">
+            <div className="flex justify-between text-sm">
+              <span className="text-neutral-500">Registered</span>
+              <span className="font-semibold text-neutral-700">{summary?.devices_total ?? 0}</span>
+            </div>
             <div className="flex justify-between text-sm">
               <span className="text-neutral-500">Online</span>
               <span className="font-semibold text-emerald-600">{summary?.devices_online ?? 0}</span>

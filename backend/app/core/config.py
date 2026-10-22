@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     # Scheduling
     SCHEDULER_ENABLED: bool = True
-    ATTENDANCE_PROCESS_INTERVAL_SECONDS: int = 900
+    ATTENDANCE_PROCESS_INTERVAL_SECONDS: int = 60
 
     @property
     def cors_origins(self) -> list[str]:

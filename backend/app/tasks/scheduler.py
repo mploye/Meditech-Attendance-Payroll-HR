@@ -3,7 +3,7 @@ import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from core.config import settings
-from tasks import attendance_job, sync_job
+from tasks import attendance_job, device_refresh_job, sync_job
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,14 @@ def start_scheduler() -> BackgroundScheduler | None:
         trigger="interval",
         seconds=settings.ESSL_SYNC_INTERVAL_SECONDS,
         id="essl_auto_sync",
+        max_instances=1,
+        coalesce=True,
+    )
+    _scheduler.add_job(
+        device_refresh_job.refresh_devices,
+        trigger="interval",
+        seconds=60,
+        id="device_realtime_refresh",
         max_instances=1,
         coalesce=True,
     )

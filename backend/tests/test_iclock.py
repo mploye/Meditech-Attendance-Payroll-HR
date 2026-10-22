@@ -173,12 +173,12 @@ def test_option_response_forces_full_resend_by_default():
     assert "OpStamp=0" in text
 
 
-def test_resync_command_is_queued_for_serial():
+def test_resync_command_is_queued_for_serial(db):
     from api.v1.endpoints.iclock import _pop_command, queue_command
 
     queue_command("ORCUS123", "DATA UPDATE ATTLOG")
-    assert _pop_command("ORCUS123") == "DATA UPDATE ATTLOG"
-    assert _pop_command("ORCUS123") is None
+    assert _pop_command(db, "ORCUS123") == "DATA UPDATE ATTLOG"
+    assert _pop_command(db, "ORCUS123") is None
 
 
 def test_cdata_unknown_device_rejected(client):

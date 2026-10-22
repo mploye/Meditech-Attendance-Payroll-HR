@@ -514,6 +514,8 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
     device.last_seen_at = datetime.now(timezone.utc)
     device.status = DeviceStatus.ONLINE
     db.commit()
+    if serial:
+        _confirm_commands(db, serial)
     logger.info(
         "iclock push SN=%s: received=%d inserted=%d dup=%d failed=%d users=%d",
         serial,

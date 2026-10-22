@@ -41,17 +41,6 @@ type DailyRow = {
   breaks?: BreakSeg[];
 };
 
-type DeviceInfo = {
-  id: string;
-  name?: string;
-  serial_number?: string;
-  status?: string;
-  last_seen_at?: string | null;
-  last_punch_at?: string | null;
-  last_sync_at?: string | null;
-  clock_drift_minutes?: number | null;
-};
-
 type SummaryRow = {
   employee_id: string;
   employee_code?: string;
@@ -167,19 +156,6 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [mobileIndex, setMobileIndex] = useState(0);
-  const [device, setDevice] = useState<DeviceInfo | null>(null);
-
-  const loadDevice = useCallback(async () => {
-    try {
-      const data = await api.get<{ items: DeviceInfo[] } | DeviceInfo[]>("/api/v1/devices/", {
-        page_size: 50,
-      });
-      const items = Array.isArray(data) ? data : data.items;
-      setDevice(items[0] ?? null);
-    } catch {
-      // device status is informational only
-    }
-  }, []);
 
   const activeRange = useMemo((): { from: string; to: string } => {
     if (tab === "daily") return { from: date, to: date };
@@ -246,13 +222,11 @@ export default function AttendancePage() {
 
   const reload = useCallback(
     async (silent = false) => {
-      const device = loadDevice();
       if (tab === "daily") await loadDaily(silent);
       else await loadSummary(silent);
-      void device;
       setLastUpdated(formatTimeWithSeconds(new Date()));
     },
-    [tab, loadDaily, loadSummary, loadDevice]
+    [tab, loadDaily, loadSummary]
   );
 
   // Initial paint and tab/date changes load the visible data first. The
@@ -368,7 +342,6 @@ export default function AttendancePage() {
 
       <Alert kind="error" message={error} />
       <Alert kind="success" message={notice} />
-      {device ? <DeviceBanner device={device} /> : null}
 
       {tab === "daily" ? (
         <Card>
@@ -699,83 +672,6 @@ function MiniStat({ label, value, tone }: { label: string; value: string; tone: 
       <div className={`text-sm font-semibold ${tone}`}>{value}</div>
     </div>
   );
-}
-
-function DeviceBanner({ device }: { device: DeviceInfo }) {
-  const [nowTick, setNowTick] = useState(() => Date.now());
-
-  useEffect(() => {
-    const t = setInterval(() => setNowTick(Date.now()), 10000);
-    return () => clearInterval(t);
-  }, []);
-
-  const ageOf = (value?: string | null): number | null => {
-    if (!value) return null;
-    const t = new Date(value).getTime();
-    if (Number.isNaN(t)) return null;
-    return Math.max(0, Math.round((nowTick - t) / 1000));
-  };
-
-  const contactAge = ageOf(device.last_seen_at);
-  const punchAge = ageOf(device.last_punch_at);
-  const drift = device.clock_drift_minutes ?? null;
-
-  const offline = contactAge === null || contactAge > 180;
-  const connectedNoPunch = !offline && (punchAge === null || punchAge > 900);
-  const clockOff = drift !== null && Math.abs(drift) >= 90;
-
-  const tone = offline
-    ? "border-red-200 bg-red-50 text-red-800"
-    : "border-amber-200 bg-amber-50 text-amber-800";
-
-  const label =
-    contactAge === null
-      ? "Device has never contacted the server"
-      : offline
-        ? "Device not reporting since " + ago(contactAge)
-        : connectedNoPunch
-          ? punchAge === null
-            ? "Device connected but no punches received yet"
-            : "Device connected but not sending punches — last punch " + ago(punchAge)
-          : clockOff
-            ? `Device clock is ${Math.floor(Math.abs(drift) / 60)}h ${Math.abs(drift) % 60}m ${drift < 0 ? "behind" : "ahead"}`
-            : "Device connected — punches are uploading automatically";
-
-  const healthy = !offline && !connectedNoPunch && !clockOff;
-
-  return (
-    <div
-      className={`mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-4 py-2.5 text-xs ${
-        healthy ? "border-green-200 bg-green-50 text-green-800" : tone
-      }`}
-    >
-      <div className="flex items-center gap-2">
-        <span
-          className={`h-2 w-2 rounded-full ${
-            healthy ? "animate-pulse bg-green-500" : offline ? "bg-red-500" : "bg-amber-500"
-          }`}
-        />
-        <span className="font-medium">{label}</span>
-        <span className="opacity-70">
-          {device.name || "Attendance device"}
-          {device.serial_number ? ` · ${device.serial_number}` : ""}
-        </span>
-      </div>
-      <span className="opacity-70">
-        {device.last_seen_at ? `Last contact ${formatTime(device.last_seen_at)}` : "Never contacted"}
-        {device.last_punch_at ? ` · Last punch ${formatTime(device.last_punch_at)}` : ""}
-      </span>
-    </div>
-  );
-}
-
-function ago(seconds: number): string {
-  if (seconds < 60) return `${seconds}s ago`;
-  const mins = Math.round(seconds / 60);
-  if (mins < 60) return `${mins} min ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
 }
 
 function Stat({ label, value, tone }: { label: string; value: string; tone: "green" | "red" | "blue" }) {

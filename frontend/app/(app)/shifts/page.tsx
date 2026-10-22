@@ -252,7 +252,7 @@ export default function ShiftsPage() {
       return;
     }
     setExpanded(id);
-    if (!assignments[id]) void loadAssignments(id);
+    void loadAssignments(id);
   };
 
   return (
@@ -316,7 +316,7 @@ export default function ShiftsPage() {
                   <th className="px-5 py-3 font-medium">Shift hrs</th>
                   <th className="px-5 py-3 font-medium">Breaks</th>
                   <th className="px-5 py-3 font-medium">OT</th>
-                  <th className="px-5 py-3 font-medium">Flags</th>
+                  <th className="px-5 py-3 font-medium">Edit</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
@@ -324,10 +324,12 @@ export default function ShiftsPage() {
                   <Fragment key={s.id}>
                     <tr className="hover:bg-neutral-50">
                       <td data-label="Name" className="px-5 py-3 font-medium text-neutral-800">
-                        <button onClick={() => toggle(s.id)} className="text-left underline-offset-2 hover:underline">
-                          {s.name}
-                        </button>
+                        <span>{s.name}</span>
                         {s.code ? <span className="text-neutral-400"> ({s.code})</span> : null}
+                        <span className="ml-2 inline-flex gap-1 align-middle">
+                          {s.is_default ? <Badge tone="blue">Default</Badge> : null}
+                          {!s.active ? <Badge tone="red">Inactive</Badge> : null}
+                        </span>
                       </td>
                       <td data-label="Hours" className="px-5 py-3 text-neutral-500">
                         {s.start_time || "—"} – {s.end_time || "—"}
@@ -341,9 +343,10 @@ export default function ShiftsPage() {
                           : `${s.scheduled_break_count ?? 3} × ${s.scheduled_break_duration ?? 15} min`}
                       </td>
                       <td data-label="OT" className="px-5 py-3 text-neutral-500">{s.overtime_enabled ? "Yes" : "No"}</td>
-                      <td data-label="Flags" className="px-5 py-3">
-                        {s.is_default ? <Badge tone="blue">Default</Badge> : null}
-                        {!s.active ? <Badge tone="red">Inactive</Badge> : null}
+                      <td data-label="Edit" className="px-5 py-3">
+                        <Button variant="secondary" onClick={() => toggle(s.id)}>
+                          {expanded === s.id ? "Close" : "Edit"}
+                        </Button>
                       </td>
                     </tr>
                     {expanded === s.id ? (

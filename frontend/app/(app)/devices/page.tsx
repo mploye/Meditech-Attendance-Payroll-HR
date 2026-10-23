@@ -75,7 +75,7 @@ export default function DevicesPage() {
     }
   };
 
-  const act = async (id: string, action: "test" | "sync" | "get-time") => {
+  const act = async (id: string, action: "test" | "sync" | "get-time" | "set-time") => {
     setActing(id);
     setError("");
     setNotice("");
@@ -83,6 +83,12 @@ export default function DevicesPage() {
       if (action === "get-time") {
         const result = await api.post<{ success?: boolean; status?: string; message?: string }>(`/api/v1/devices/${id}/get-time`);
         setNotice(result?.message || "Get time queued (check device response)");
+      } else if (action === "set-time") {
+        const result = await api.post<{ success?: boolean; message?: string; device_time?: string }>(
+          `/api/v1/devices/${id}/set-time`,
+          {},
+        );
+        setNotice(result?.message || `System time ${result?.device_time || ""} sent to device`);
       } else {
         const result = await api.post<{ success?: boolean; status?: string; message?: string }>(`/api/v1/devices/${id}/${action}`);
         setNotice(result?.message || `${action} completed`);
@@ -240,6 +246,9 @@ export default function DevicesPage() {
                         </Button>
                         <Button variant="secondary" onClick={() => openClock(d)} disabled={acting === d.id}>
                           Set Time
+                        </Button>
+                        <Button variant="secondary" onClick={() => act(d.id, "set-time")} disabled={acting === d.id}>
+                          Sync to System Time
                         </Button>
                         <Button variant="primary" onClick={() => act(d.id, "sync")} disabled={acting === d.id}>
                           Sync

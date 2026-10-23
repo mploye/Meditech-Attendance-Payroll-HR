@@ -20,6 +20,7 @@ type Device = {
   last_seen_at?: string | null;
   last_punch_at?: string | null;
   clock_drift_minutes?: number | null;
+  last_punch_clock?: string | null;
   timezone?: string | null;
   enabled?: boolean;
 };
@@ -48,7 +49,11 @@ export default function DevicesPage() {
 
   useEffect(() => {
     const t = setTimeout(() => void load(), 0);
-    return () => clearTimeout(t);
+    const interval = setInterval(() => void load(), 30000);
+    return () => {
+      clearTimeout(t);
+      clearInterval(interval);
+    };
   }, []);
 
   const set = (k: string) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -221,6 +226,9 @@ export default function DevicesPage() {
                       <div className="text-xs text-neutral-400">
                         Punch {d.last_punch_at ? formatDateTime(d.last_punch_at) : "—"}
                       </div>
+                      <div className="text-xs text-emerald-700">
+                        Device time {d.last_punch_clock ? formatDateTime(d.last_punch_clock) : "—"}
+                      </div>
                     </td>
                     <td className="actions px-5 py-3 text-right">
                       <div className="flex justify-end gap-2">
@@ -276,6 +284,19 @@ export default function DevicesPage() {
             </div>
 
             <form onSubmit={submitClock} className="grid grid-cols-1 gap-4 px-5 py-4 sm:grid-cols-2">
+              <div className="rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-600 sm:col-span-2">
+                <div>
+                  <span className="font-medium text-neutral-700">Current device time:</span>{" "}
+                  {clockDevice.last_punch_clock ? formatDateTime(clockDevice.last_punch_clock) : "—"}
+                  {clockDevice.last_seen_at ? (
+                    <span className="text-neutral-400"> (contact {formatDateTime(clockDevice.last_seen_at)})</span>
+                  ) : null}
+                </div>
+                <div className="mt-1">
+                  <span className="font-medium text-neutral-700">Server time:</span>{" "}
+                  {formatDateTime(new Date())}
+                </div>
+              </div>
               <Input label="Date" type="date" required value={clockDate} onChange={setClockDate} />
               <Input label="Time" type="time" required value={clockTime} onChange={setClockTime} />
               <p className="text-xs text-neutral-400 sm:col-span-2">

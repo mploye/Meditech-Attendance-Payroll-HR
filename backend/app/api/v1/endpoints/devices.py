@@ -29,7 +29,36 @@ def list_devices(
     cid = resolve_company_id(user)
     dev_status = DeviceStatus(status) if status else None
     devices = device_service.list_devices(db, cid, search, dev_status)
-    return success_response([orm_to_dict(d) for d in devices])
+
+    from datetime import timezone
+    from zoneinfo import ZoneInfo
+
+    from sqlalchemy import func, select
+
+    clocks = dict(
+        db.execute(
+            select(AttendanceLog.device_id, func.max(AttendanceLog.event_timestamp))
+            .where(AttendanceLog.company_id == cid)
+            .group_by(AttendanceLog.device_id)
+        ).all()
+    )
+
+    data = []
+    for device in devices:
+        item = orm_to_dict(device)
+        last = clocks.get(device.id)
+        if last is not None:
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            try:
+                tz = ZoneInfo(device.timezone or "Asia/Kolkata")
+            except Exception:
+                tz = timezone.utc
+            item["last_punch_clock"] = last.astimezone(tz).isoformat()
+        else:
+            item["last_punch_clock"] = None
+        data.append(item)
+    return success_response(data)
 
 
 @router.post("/")

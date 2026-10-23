@@ -30,7 +30,7 @@ def list_devices(
     dev_status = DeviceStatus(status) if status else None
     devices = device_service.list_devices(db, cid, search, dev_status)
 
-    from datetime import timezone
+    from datetime import datetime, timezone
     from zoneinfo import ZoneInfo
 
     from sqlalchemy import func, select

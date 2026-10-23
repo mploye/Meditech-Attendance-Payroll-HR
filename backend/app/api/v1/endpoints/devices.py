@@ -206,13 +206,21 @@ def set_device_time(device_id: str, body: dict | None = None, user: User = Depen
         target = now
 
     cmd = f"SET TIME {target.strftime('%Y-%m-%d %H:%M:%S')}"
+    offset = target.replace(tzinfo=ZoneInfo(tz_name)).utcoffset()
+    hours = (offset.total_seconds() / 3600) if offset is not None else 0
+    tz_value = f"{hours:g}"
+    tz_cmd = f"SET OPTION TimeZone={tz_value}"
+    queue_command(device.serial_number, tz_cmd)
     queue_command(device.serial_number, cmd)
     return success_response(
         {
-            "queued": cmd,
+            "queued": [tz_cmd, cmd],
             "device_time": target.strftime("%Y-%m-%d %H:%M:%S"),
             "timezone": tz_name,
-            "message": f"Time change to {target.strftime('%d %b %Y %I:%M:%S %p')} queued; runs on next device poll (~10s).",
+            "message": (
+                f"Timezone {tz_value} and time {target.strftime('%d %b %Y %I:%M:%S %p')} queued; "
+                "runs on next device poll (~10s). The device reports its new clock on the next punch."
+            ),
         }
     )
 

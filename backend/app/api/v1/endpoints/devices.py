@@ -145,6 +145,50 @@ def pull_data(device_id: str, body: dict | None = None, user: User = Depends(get
     )
 
 
+@router.post("/{device_id}/set-time")
+def set_device_time(device_id: str, body: dict | None = None, user: User = Depends(get_current_user), db=Depends(get_db)):
+    ensure_perm(user, "devices.edit")
+    cid = resolve_company_id(user)
+    device = _get_device(db, cid, device_id)
+    from api.v1.endpoints.iclock import queue_command
+    from datetime import datetime
+    try:
+        import pytz
+    except Exception:
+        pytz = None
+
+    tz_name = device.timezone or "Asia/Kolkata"
+    if pytz:
+        try:
+            tz = pytz.timezone(tz_name)
+            now = datetime.now(tz)
+        except Exception:
+            now = datetime.now()
+    else:
+        now = datetime.now()
+
+    if body and body.get("datetime"):
+        try:
+            cmd = f"SET TIME {body['datetime']}"
+        except Exception:
+            cmd = f"SET TIME {now.strftime('%Y-%m-%d %H:%M:%S')}"
+    else:
+        cmd = f"SET TIME {now.strftime('%Y-%m-%d %H:%M:%S')}"
+    queue_command(device.serial_number, cmd)
+    return success_response({"queued": cmd, "device_time": now.strftime("%Y-%m-%d %H:%M:%S"), "timezone": tz_name})
+
+
+@router.post("/{device_id}/get-time")
+def get_device_time(device_id: str, user: User = Depends(get_current_user), db=Depends(get_db)):
+    ensure_perm(user, "devices.view")
+    cid = resolve_company_id(user)
+    device = _get_device(db, cid, device_id)
+    from api.v1.endpoints.iclock import queue_command
+    cmd = "GET TIME"
+    queue_command(device.serial_number, cmd)
+    return success_response({"queued": cmd})
+
+
 @router.get("/{device_id}/sync-logs")
 def sync_logs(device_id: str, user: User = Depends(get_current_user), db=Depends(get_db)):
     ensure_perm(user, "devices.view")

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { formatTime } from "@/lib/datetime";
+import { formatDateTime } from "@/lib/datetime";
 import { Alert, Badge, Button, Card, CardHeader, Empty, Input, PageHeader, Select, statusTone } from "@/components/ui";
 
 type Device = {
@@ -64,14 +64,23 @@ export default function DevicesPage() {
     }
   };
 
-  const act = async (id: string, action: "test" | "sync") => {
+  const act = async (id: string, action: "test" | "sync" | "set-time" | "get-time") => {
     setActing(id);
     setError("");
     setNotice("");
     try {
-      const result = await api.post<{ success?: boolean; status?: string; message?: string }>(`/api/v1/devices/${id}/${action}`);
-      setNotice(result?.message || `${action} completed`);
-      if (action === "sync") load();
+      if (action === "set-time") {
+        const dt = prompt("Enter date and time for device (YYYY-MM-DD HH:MM:SS). Leave blank to use server time now:");
+        const result = await api.post<{ success?: boolean; status?: string; message?: string; device_time?: string }>(`/api/v1/devices/${id}/set-time`, dt ? { datetime: dt } : {});
+        setNotice(result?.message || `Set time queued${result?.device_time ? ` (${result.device_time})` : ""}`);
+      } else if (action === "get-time") {
+        const result = await api.post<{ success?: boolean; status?: string; message?: string }>(`/api/v1/devices/${id}/get-time`);
+        setNotice(result?.message || "Get time queued (check device response)");
+      } else {
+        const result = await api.post<{ success?: boolean; status?: string; message?: string }>(`/api/v1/devices/${id}/${action}`);
+        setNotice(result?.message || `${action} completed`);
+        if (action === "sync") load();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : `${action} failed`);
     } finally {
@@ -152,22 +161,28 @@ export default function DevicesPage() {
                     </td>
                     <td data-label="Status" className="px-5 py-3">
                       <Badge tone={statusTone(d.status)}>{d.status}</Badge>
-                      {d.clock_drift_minutes != null && Math.abs(d.clock_drift_minutes) >= 90 ? (
+                      {d.clock_drift_minutes != null ? (
                         <div className="mt-1 text-[11px] font-medium text-amber-600">
                           Clock {Math.abs(d.clock_drift_minutes)} min {d.clock_drift_minutes < 0 ? "behind" : "ahead"}
                         </div>
                       ) : null}
                     </td>
                     <td data-label="Last contact" className="px-5 py-3 text-neutral-500">
-                      <div>Contact {d.last_seen_at ? formatTime(d.last_seen_at) : "—"}</div>
+                      <div>Contact {d.last_seen_at ? formatDateTime(d.last_seen_at) : "—"}</div>
                       <div className="text-xs text-neutral-400">
-                        Punch {d.last_punch_at ? formatTime(d.last_punch_at) : "—"}
+                        Punch {d.last_punch_at ? formatDateTime(d.last_punch_at) : "—"}
                       </div>
                     </td>
                     <td className="actions px-5 py-3 text-right">
                       <div className="flex justify-end gap-2">
                         <Button variant="secondary" onClick={() => act(d.id, "test")} disabled={acting === d.id}>
                           Test
+                        </Button>
+                        <Button variant="secondary" onClick={() => act(d.id, "get-time")} disabled={acting === d.id}>
+                          Get Time
+                        </Button>
+                        <Button variant="secondary" onClick={() => act(d.id, "set-time")} disabled={acting === d.id}>
+                          Set Time
                         </Button>
                         <Button variant="primary" onClick={() => act(d.id, "sync")} disabled={acting === d.id}>
                           Sync

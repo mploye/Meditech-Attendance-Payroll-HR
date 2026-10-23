@@ -564,11 +564,6 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
     inserted = duplicates = failed = 0
     newest_device_ts: Optional[datetime] = None
     last_type: dict[str, Optional[EventType]] = {}
-    # Devices whose firmware rejects remote "SET TIME" keep a constant clock
-    # error. Correct each punch by the last measured drift so payroll sees the
-    # true time until the terminal clock is fixed on the keypad.
-    drift = device.clock_drift_minutes
-    correction = timedelta(minutes=drift) if drift is not None and 0 < abs(drift) <= 180 else timedelta(0)
     for record in punch_records:
         device_user_id = str(record.get("USERID") or "").strip()
         time_value = record.get("CHECKTIME") or record.get("TIME") or record.get("DATETIME")
@@ -585,7 +580,7 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
             event_type = EventType.OUT if prev == EventType.IN else EventType.IN
         last_type[device_user_id] = event_type
 
-        aware_ts = naive_ts.replace(tzinfo=device_tz).astimezone(timezone.utc) - correction
+        aware_ts = naive_ts.replace(tzinfo=device_tz).astimezone(timezone.utc)
         employee_id = _resolve_device_employee(db, company_id, str(device.id), device_user_id)
         if employee_id is None:
             failed += 1
@@ -614,11 +609,11 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
         device.last_punch_at = now
         # Device clock vs company-local wall clock: a large gap silently shifts
         # every punch and corrupts payroll, so record it for the UI to surface.
-        # Only real-time pushes give a usable reading; bulk re-uploads of old
-        # logs would otherwise look like years of drift.
+        # Only a real-time push gives a usable clock reading. Bulk re-uploads
+        # of older logs would otherwise look like hours of drift.
         local_now = now.astimezone(device_tz).replace(tzinfo=None)
         gap_minutes = int(round((newest_device_ts - local_now).total_seconds() / 60))
-        if abs(gap_minutes) <= 1440:
+        if abs(gap_minutes) <= 15:
             device.clock_drift_minutes = gap_minutes
     db.commit()
     if serial:

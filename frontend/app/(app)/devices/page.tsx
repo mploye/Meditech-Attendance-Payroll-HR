@@ -233,7 +233,7 @@ export default function DevicesPage() {
                         Punch {d.last_punch_at ? formatDateTime(d.last_punch_at) : "—"}
                       </div>
                       <div className="text-xs text-emerald-700">
-                        Device time {d.last_punch_clock ? formatDateTime(d.last_punch_clock) : "—"}
+                        Last punch (device clock) {d.last_punch_clock ? formatDateTime(d.last_punch_clock) : "—"}
                       </div>
                     </td>
                     <td className="actions px-5 py-3 text-right">
@@ -295,7 +295,7 @@ export default function DevicesPage() {
             <form onSubmit={submitClock} className="grid grid-cols-1 gap-4 px-5 py-4 sm:grid-cols-2">
               <div className="rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-600 sm:col-span-2">
                 <div>
-                  <span className="font-medium text-neutral-700">Current device time:</span>{" "}
+                  <span className="font-medium text-neutral-700">Device clock at last punch:</span>{" "}
                   {clockDevice.last_punch_clock ? formatDateTime(clockDevice.last_punch_clock) : "—"}
                   {clockDevice.last_seen_at ? (
                     <span className="text-neutral-400"> (contact {formatDateTime(clockDevice.last_seen_at)})</span>

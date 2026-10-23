@@ -20,6 +20,8 @@ type Device = {
   last_seen_at?: string | null;
   last_punch_at?: string | null;
   clock_drift_minutes?: number | null;
+  clock_offset_minutes?: number | null;
+  calibration_requested_at?: string | null;
   last_punch_clock?: string | null;
   timezone?: string | null;
   enabled?: boolean;
@@ -81,12 +83,16 @@ export default function DevicesPage() {
     }
   };
 
-  const act = async (id: string, action: "test" | "sync" | "get-time" | "set-time") => {
+  const act = async (id: string, action: "test" | "sync" | "get-time" | "set-time" | "calibrate") => {
     setActing(id);
     setError("");
     setNotice("");
     try {
-      if (action === "get-time") {
+      if (action === "calibrate") {
+        const result = await api.post<{ message?: string }>(`/api/v1/devices/${id}/calibrate`);
+        setNotice(result?.message || "Calibration armed");
+        void load();
+      } else if (action === "get-time") {
         const result = await api.post<{ success?: boolean; status?: string; message?: string }>(`/api/v1/devices/${id}/get-time`);
         setNotice(result?.message || "Get time queued (check device response)");
       } else if (action === "set-time") {
@@ -243,7 +249,13 @@ export default function DevicesPage() {
                     </td>
                     <td data-label="Status" className="px-5 py-3">
                       <Badge tone={statusTone(d.status)}>{d.status}</Badge>
-                      {d.clock_drift_minutes != null ? (
+                      {d.clock_offset_minutes ? (
+                        <div className="mt-1 text-[11px] font-medium text-emerald-600">
+                          Time corrected ({Math.abs(d.clock_offset_minutes)} min)
+                        </div>
+                      ) : d.calibration_requested_at ? (
+                        <div className="mt-1 text-[11px] font-medium text-blue-600">Waiting for a punch…</div>
+                      ) : d.clock_drift_minutes != null ? (
                         <div className="mt-1 text-[11px] font-medium text-amber-600">
                           Clock {Math.abs(d.clock_drift_minutes)} min {d.clock_drift_minutes < 0 ? "behind" : "ahead"}
                         </div>
@@ -255,7 +267,7 @@ export default function DevicesPage() {
                         Punch {d.last_punch_at ? formatDateTime(d.last_punch_at) : "—"}
                       </div>
                       <div className="text-xs text-emerald-700">
-                        Last punch (device clock) {d.last_punch_clock ? formatDateTime(d.last_punch_clock) : "—"}
+                        Last punch {d.last_punch_clock ? formatDateTime(d.last_punch_clock) : "—"}
                       </div>
                     </td>
                     <td className="actions px-5 py-3 text-right">
@@ -271,6 +283,9 @@ export default function DevicesPage() {
                         </Button>
                         <Button variant="secondary" onClick={() => act(d.id, "set-time")} disabled={acting === d.id}>
                           Sync to System Time
+                        </Button>
+                        <Button onClick={() => act(d.id, "calibrate")} disabled={acting === d.id}>
+                          Fix Clock
                         </Button>
                         <Button variant="primary" onClick={() => act(d.id, "sync")} disabled={acting === d.id}>
                           Sync
@@ -317,7 +332,7 @@ export default function DevicesPage() {
             <form onSubmit={submitClock} className="grid grid-cols-1 gap-4 px-5 py-4 sm:grid-cols-2">
               <div className="rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-600 sm:col-span-2">
                 <div>
-                  <span className="font-medium text-neutral-700">Device clock at last punch:</span>{" "}
+                  <span className="font-medium text-neutral-700">Last punch (system time):</span>{" "}
                   {clockDevice.last_punch_clock ? formatDateTime(clockDevice.last_punch_clock) : "—"}
                   {clockDevice.last_seen_at ? (
                     <span className="text-neutral-400"> (contact {formatDateTime(clockDevice.last_seen_at)})</span>
@@ -327,16 +342,24 @@ export default function DevicesPage() {
                   <span className="font-medium text-neutral-700">Server time:</span>{" "}
                   {formatDateTime(new Date())}
                 </div>
+                {clockDevice.clock_offset_minutes != null ? (
+                  <div className="mt-1 text-emerald-700">
+                    Device clock offset {Math.abs(clockDevice.clock_offset_minutes)} min{" "}
+                    {clockDevice.clock_offset_minutes < 0 ? "behind" : "ahead"} — punches and attendance are
+                    corrected to system time.
+                  </div>
+                ) : null}
               </div>
               <Input label="Date" type="date" required value={clockDate} onChange={setClockDate} />
               <Input label="Time" type="time" required value={clockTime} onChange={setClockTime} />
               <p className="text-xs text-neutral-400 sm:col-span-2">
-                Times are in {clockDevice.timezone || "Asia/Kolkata"} (IST). If the device clock does not change after
-                ~30s, its firmware rejects remote time-set — set it once on the terminal keypad (Menu → Date/Time).
+                Times are in {clockDevice.timezone || "Asia/Kolkata"} (IST). This firmware usually ignores remote
+                time-set, so use <span className="font-medium">Fix Clock</span>: arm it, punch once on the terminal
+                within 5 minutes, and the server measures the offset and shows every punch in system time.
                 {clockDevice.clock_drift_minutes != null
                   ? ` Measured offset: ${Math.abs(clockDevice.clock_drift_minutes)} min ${
                       clockDevice.clock_drift_minutes < 0 ? "behind" : "ahead"
-                    } (punches auto-corrected).`
+                    }.`
                   : ""}
               </p>
               {clockResult ? (

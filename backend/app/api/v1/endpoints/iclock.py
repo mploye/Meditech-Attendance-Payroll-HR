@@ -20,12 +20,13 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from api.deps import get_db
 from core.database import SessionLocal
 from core.timezone import get_zone
+from models.attendance import AttendanceLog
 from models.audit import AuditLog
 from models.device import Device
 from models.device_command import DeviceCommand
@@ -561,6 +562,38 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
     company_tz_name = _company_timezone(db, company_id)
     device_tz = _device_zone(device, company_tz_name)
 
+    # Firmware rejects remote time-set, so the terminal clock may stay wrong.
+    # A one-shot calibration (user punches right after pressing Calibrate)
+    # measures the offset once; every stored punch is then re-based so the
+    # portal always shows system time.
+    newest_batch_ts: Optional[datetime] = None
+    for record in punch_records:
+        tv = record.get("CHECKTIME") or record.get("TIME") or record.get("DATETIME")
+        nts = _parse_timestamp(tv) if tv else None
+        if nts is not None and (newest_batch_ts is None or nts > newest_batch_ts):
+            newest_batch_ts = nts
+
+    requested_at = _aware(device.calibration_requested_at)
+    if newest_batch_ts is not None and requested_at is not None:
+        age = (datetime.now(timezone.utc) - requested_at).total_seconds()
+        measured = int(round((newest_batch_ts - datetime.now(timezone.utc).astimezone(device_tz).replace(tzinfo=None)).total_seconds() / 60))
+        if age <= 15 * 60 and abs(measured) <= 360:
+            delta = measured - int(device.clock_offset_minutes or 0)
+            if delta:
+                db.execute(
+                    update(AttendanceLog)
+                    .where(AttendanceLog.device_id == str(device.id))
+                    .values(event_timestamp=AttendanceLog.event_timestamp - timedelta(minutes=delta))
+                )
+            device.clock_offset_minutes = measured
+            device.clock_drift_minutes = measured
+            device.calibration_requested_at = None
+            db.commit()
+            logger.info("iclock calibration SN=%s: offset=%s min (delta %s)", device.serial_number, measured, delta)
+            _reprocess_device_range(db, device, company_id, device_tz)
+
+    offset_minutes = int(device.clock_offset_minutes or 0)
+
     inserted = duplicates = failed = 0
     newest_device_ts: Optional[datetime] = None
     last_type: dict[str, Optional[EventType]] = {}
@@ -580,7 +613,7 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
             event_type = EventType.OUT if prev == EventType.IN else EventType.IN
         last_type[device_user_id] = event_type
 
-        aware_ts = naive_ts.replace(tzinfo=device_tz).astimezone(timezone.utc)
+        aware_ts = naive_ts.replace(tzinfo=device_tz).astimezone(timezone.utc) - timedelta(minutes=offset_minutes)
         employee_id = _resolve_device_employee(db, company_id, str(device.id), device_user_id)
         if employee_id is None:
             failed += 1
@@ -631,6 +664,30 @@ async def iclock_cdata(request: Request, db: Session = Depends(get_db)):
     if inserted:
         _process_company_today(company_id)
     return PlainTextResponse("OK")
+
+
+def _reprocess_device_range(db: Session, device: Device, company_id: str, device_tz) -> None:
+    """Rebuild attendance rows after stored punches were re-based."""
+    try:
+        bounds = db.execute(
+            select(func.min(AttendanceLog.event_timestamp), func.max(AttendanceLog.event_timestamp))
+            .where(AttendanceLog.device_id == str(device.id))
+        ).one()
+    except Exception:
+        logger.exception("Could not read punch range for device %s", device.serial_number)
+        return
+    start, end = bounds
+    if start is None or end is None:
+        return
+    start_date = start.astimezone(device_tz).date()
+    end_date = end.astimezone(device_tz).date()
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
+    try:
+        attendance_service.process_range(db, company_id, start_date, end_date)
+        logger.info("Re-based attendance for %s..%s after clock calibration", start_date, end_date)
+    except Exception:
+        logger.exception("Attendance re-processing failed for %s..%s", start_date, end_date)
 
 
 def _process_company_today(company_id: str) -> None:

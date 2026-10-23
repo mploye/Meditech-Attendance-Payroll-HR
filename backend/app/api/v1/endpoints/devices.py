@@ -230,6 +230,27 @@ def set_device_time(device_id: str, body: dict | None = None, user: User = Depen
     )
 
 
+@router.post("/{device_id}/calibrate")
+def calibrate_clock(device_id: str, user: User = Depends(get_current_user), db=Depends(get_db)):
+    ensure_perm(user, "devices.edit")
+    cid = resolve_company_id(user)
+    device = _get_device(db, cid, device_id)
+    from datetime import datetime, timezone
+
+    device.calibration_requested_at = datetime.now(timezone.utc)
+    db.commit()
+    return success_response(
+        {
+            "calibration_requested_at": device.calibration_requested_at.isoformat(),
+            "message": (
+                "Clock calibration armed. Punch once on the terminal within 5 minutes; "
+                "the server will measure its clock offset, re-base the stored punches and "
+                "rebuild attendance in system time."
+            ),
+        }
+    )
+
+
 @router.post("/{device_id}/get-time")
 def get_device_time(device_id: str, user: User = Depends(get_current_user), db=Depends(get_db)):
     ensure_perm(user, "devices.view")

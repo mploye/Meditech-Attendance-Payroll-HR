@@ -20,6 +20,7 @@ type Device = {
   last_seen_at?: string | null;
   last_punch_at?: string | null;
   clock_drift_minutes?: number | null;
+  timezone?: string | null;
   enabled?: boolean;
 };
 
@@ -31,6 +32,11 @@ export default function DevicesPage() {
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [acting, setActing] = useState<string | null>(null);
+  const [clockDevice, setClockDevice] = useState<Device | null>(null);
+  const [clockDate, setClockDate] = useState("");
+  const [clockTime, setClockTime] = useState("");
+  const [clockBusy, setClockBusy] = useState(false);
+  const [clockResult, setClockResult] = useState("");
 
   const load = async () => {
     try {
@@ -64,16 +70,12 @@ export default function DevicesPage() {
     }
   };
 
-  const act = async (id: string, action: "test" | "sync" | "set-time" | "get-time") => {
+  const act = async (id: string, action: "test" | "sync" | "get-time") => {
     setActing(id);
     setError("");
     setNotice("");
     try {
-      if (action === "set-time") {
-        const dt = prompt("Enter date and time for device (YYYY-MM-DD HH:MM:SS). Leave blank to use server time now:");
-        const result = await api.post<{ success?: boolean; status?: string; message?: string; device_time?: string }>(`/api/v1/devices/${id}/set-time`, dt ? { datetime: dt } : {});
-        setNotice(result?.message || `Set time queued${result?.device_time ? ` (${result.device_time})` : ""}`);
-      } else if (action === "get-time") {
+      if (action === "get-time") {
         const result = await api.post<{ success?: boolean; status?: string; message?: string }>(`/api/v1/devices/${id}/get-time`);
         setNotice(result?.message || "Get time queued (check device response)");
       } else {
@@ -85,6 +87,53 @@ export default function DevicesPage() {
       setError(err instanceof Error ? err.message : `${action} failed`);
     } finally {
       setActing(null);
+    }
+  };
+
+  const istParts = (value: string) => {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).formatToParts(d);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value || "00";
+    return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}:${get("second")}` };
+  };
+
+  const openClock = (device: Device) => {
+    const now = istParts(new Date().toISOString()) || { date: "", time: "" };
+    setClockDevice(device);
+    setClockDate(now.date);
+    setClockTime(now.time);
+    setClockResult("");
+    setError("");
+    setNotice("");
+  };
+
+  const submitClock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clockDevice) return;
+    setClockBusy(true);
+    setError("");
+    try {
+      const dt = `${clockDate} ${clockTime.length === 5 ? `${clockTime}:00` : clockTime}`;
+      const result = await api.post<{ success?: boolean; message?: string; device_time?: string }>(
+        `/api/v1/devices/${clockDevice.id}/set-time`,
+        { datetime: dt },
+      );
+      setClockResult(result?.message || `Set time queued (${result?.device_time || dt})`);
+      setNotice(`Set time queued for ${clockDevice.name}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Set time failed");
+    } finally {
+      setClockBusy(false);
     }
   };
 
@@ -181,7 +230,7 @@ export default function DevicesPage() {
                         <Button variant="secondary" onClick={() => act(d.id, "get-time")} disabled={acting === d.id}>
                           Get Time
                         </Button>
-                        <Button variant="secondary" onClick={() => act(d.id, "set-time")} disabled={acting === d.id}>
+                        <Button variant="secondary" onClick={() => openClock(d)} disabled={acting === d.id}>
                           Set Time
                         </Button>
                         <Button variant="primary" onClick={() => act(d.id, "sync")} disabled={acting === d.id}>
@@ -196,6 +245,57 @@ export default function DevicesPage() {
           </div>
         )}
       </Card>
+
+      {clockDevice ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center md:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="device-clock-title"
+          onClick={() => setClockDevice(null)}
+        >
+          <div
+            className="w-full max-w-md overflow-hidden rounded-t-2xl bg-white shadow-xl md:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4">
+              <div>
+                <h3 id="device-clock-title" className="text-base font-semibold text-neutral-800">Set device time</h3>
+                <p className="text-xs text-neutral-400">
+                  {clockDevice.name} · {clockDevice.serial_number}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setClockDevice(null)}
+                className="rounded-lg px-2 py-1 text-xl leading-none text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={submitClock} className="grid grid-cols-1 gap-4 px-5 py-4 sm:grid-cols-2">
+              <Input label="Date" type="date" required value={clockDate} onChange={setClockDate} />
+              <Input label="Time" type="time" required value={clockTime} onChange={setClockTime} />
+              <p className="text-xs text-neutral-400 sm:col-span-2">
+                Times are in {clockDevice.timezone || "Asia/Kolkata"} (IST). The command runs on the device's next poll (~10s).
+              </p>
+              {clockResult ? (
+                <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 sm:col-span-2">{clockResult}</p>
+              ) : null}
+              <div className="flex justify-end gap-2 sm:col-span-2">
+                <Button variant="secondary" onClick={() => setClockDevice(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={clockBusy}>
+                  {clockBusy ? "Sending…" : "Set Time"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

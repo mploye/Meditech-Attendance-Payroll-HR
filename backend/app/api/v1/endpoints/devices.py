@@ -150,32 +150,42 @@ def set_device_time(device_id: str, body: dict | None = None, user: User = Depen
     ensure_perm(user, "devices.edit")
     cid = resolve_company_id(user)
     device = _get_device(db, cid, device_id)
-    from api.v1.endpoints.iclock import queue_command
     from datetime import datetime
-    try:
-        import pytz
-    except Exception:
-        pytz = None
+    from zoneinfo import ZoneInfo
+
+    from api.v1.endpoints.iclock import queue_command
+    from core.errors import ValidationError
 
     tz_name = device.timezone or "Asia/Kolkata"
-    if pytz:
-        try:
-            tz = pytz.timezone(tz_name)
-            now = datetime.now(tz)
-        except Exception:
-            now = datetime.now()
-    else:
+    try:
+        now = datetime.now(ZoneInfo(tz_name))
+    except Exception:
         now = datetime.now()
 
-    if body and body.get("datetime"):
-        try:
-            cmd = f"SET TIME {body['datetime']}"
-        except Exception:
-            cmd = f"SET TIME {now.strftime('%Y-%m-%d %H:%M:%S')}"
+    raw = (body or {}).get("datetime")
+    if raw:
+        text = str(raw).strip().replace("T", " ")
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+            try:
+                target = datetime.strptime(text, fmt)
+                break
+            except ValueError:
+                target = None
+        if target is None:
+            raise ValidationError("datetime must be YYYY-MM-DD HH:MM:SS")
     else:
-        cmd = f"SET TIME {now.strftime('%Y-%m-%d %H:%M:%S')}"
+        target = now
+
+    cmd = f"SET TIME {target.strftime('%Y-%m-%d %H:%M:%S')}"
     queue_command(device.serial_number, cmd)
-    return success_response({"queued": cmd, "device_time": now.strftime("%Y-%m-%d %H:%M:%S"), "timezone": tz_name})
+    return success_response(
+        {
+            "queued": cmd,
+            "device_time": target.strftime("%Y-%m-%d %H:%M:%S"),
+            "timezone": tz_name,
+            "message": f"Time change to {target.strftime('%d %b %Y %I:%M:%S %p')} queued; runs on next device poll (~10s).",
+        }
+    )
 
 
 @router.post("/{device_id}/get-time")

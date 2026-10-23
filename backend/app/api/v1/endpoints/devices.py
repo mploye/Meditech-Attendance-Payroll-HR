@@ -57,6 +57,10 @@ def list_devices(
             item["last_punch_clock"] = last.astimezone(tz).isoformat()
         else:
             item["last_punch_clock"] = None
+        # A drift reading is only meaningful right after a real-time punch.
+        last_punch = device.last_punch_at
+        if last_punch is None or (datetime.now(timezone.utc) - last_punch).total_seconds() > 1800:
+            item["clock_drift_minutes"] = None
         data.append(item)
     return success_response(data)
 

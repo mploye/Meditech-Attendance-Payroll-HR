@@ -300,7 +300,13 @@ export default function DevicesPage() {
               <Input label="Date" type="date" required value={clockDate} onChange={setClockDate} />
               <Input label="Time" type="time" required value={clockTime} onChange={setClockTime} />
               <p className="text-xs text-neutral-400 sm:col-span-2">
-                Times are in {clockDevice.timezone || "Asia/Kolkata"} (IST). The command runs on the device's next poll (~10s).
+                Times are in {clockDevice.timezone || "Asia/Kolkata"} (IST). If the device clock does not change after
+                ~30s, its firmware rejects remote time-set — set it once on the terminal keypad (Menu → Date/Time).
+                {clockDevice.clock_drift_minutes != null
+                  ? ` Measured offset: ${Math.abs(clockDevice.clock_drift_minutes)} min ${
+                      clockDevice.clock_drift_minutes < 0 ? "behind" : "ahead"
+                    } (punches auto-corrected).`
+                  : ""}
               </p>
               {clockResult ? (
                 <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700 sm:col-span-2">{clockResult}</p>

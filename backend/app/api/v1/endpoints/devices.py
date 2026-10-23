@@ -205,7 +205,7 @@ def set_device_time(device_id: str, body: dict | None = None, user: User = Depen
     else:
         target = now
 
-    cmd = f"SET TIME {target.strftime('%Y-%m-%d %H:%M:%S')}"
+    cmd = f"SET OPTION DateTime={target.strftime('%Y-%m-%d %H:%M:%S')}"
     offset = target.replace(tzinfo=ZoneInfo(tz_name)).utcoffset()
     hours = (offset.total_seconds() / 3600) if offset is not None else 0
     tz_value = f"{hours:g}"
@@ -218,8 +218,9 @@ def set_device_time(device_id: str, body: dict | None = None, user: User = Depen
             "device_time": target.strftime("%Y-%m-%d %H:%M:%S"),
             "timezone": tz_name,
             "message": (
-                f"Timezone {tz_value} and time {target.strftime('%d %b %Y %I:%M:%S %p')} queued; "
-                "runs on next device poll (~10s). The device reports its new clock on the next punch."
+                f"Sent timezone {tz_value} and time {target.strftime('%d %b %Y %I:%M:%S %p')} to the device. "
+                "If the terminal firmware ignores remote clock changes, set it once on the device keypad "
+                "(Menu → Date/Time); the server will keep correcting stored punches in the meantime."
             ),
         }
     )

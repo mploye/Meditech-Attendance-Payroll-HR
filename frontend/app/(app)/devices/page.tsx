@@ -30,6 +30,8 @@ export default function DevicesPage() {
   const [form, setForm] = useState<Record<string, string>>({ device_type: "FACE_PUNCH", provider: "ESSL" });
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [acting, setActing] = useState<string | null>(null);
@@ -42,8 +44,12 @@ export default function DevicesPage() {
   const load = async () => {
     try {
       setItems(await api.get<Device[]>("/api/v1/devices"));
+      setLoadError("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load devices");
+      const message = err instanceof Error ? err.message : "Failed to load devices";
+      setLoadError(message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -189,7 +195,23 @@ export default function DevicesPage() {
       )}
 
       <Card>
-        {items.length === 0 ? (
+        {loading ? (
+          <div className="px-5 py-8 text-center text-sm text-neutral-500">Connecting to the server…</div>
+        ) : loadError ? (
+          <div className="flex flex-col items-center gap-3 px-5 py-8 text-center">
+            <p className="text-sm text-neutral-600">
+              The API server is starting up (Render free tier sleeps when idle). This usually takes 15–30 seconds.
+            </p>
+            <Button
+              onClick={() => {
+                setLoading(true);
+                void load();
+              }}
+            >
+              Retry
+            </Button>
+          </div>
+        ) : items.length === 0 ? (
           <Empty text="No devices registered" />
         ) : (
           <div className="overflow-x-auto">

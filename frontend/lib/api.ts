@@ -50,6 +50,7 @@ async function request<T>(
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
   const maxRetries = opts.retries ?? 3;
+  const retryableStatus = new Set([429, 500, 502, 503, 504]);
   let res: Response | null = null;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -60,12 +61,14 @@ async function request<T>(
         body: body !== undefined ? JSON.stringify(body) : undefined,
         cache: "no-store",
       });
-      break;
+      if (!retryableStatus.has(res.status) || attempt === maxRetries - 1) break;
     } catch {
-      if (attempt < maxRetries - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+      if (attempt === maxRetries - 1) {
+        res = null;
+        break;
       }
     }
+    await new Promise((resolve) => setTimeout(resolve, 3000 * (attempt + 1)));
   }
 
   if (!res) {
@@ -113,7 +116,7 @@ export const api = {
     if (!opts.fresh && cached && Date.now() - cached.at < GET_CACHE_TTL_MS) {
       return cached.data as T;
     }
-    const data = await request<T>("GET", url);
+    const data = await request<T>("GET", url, undefined, { retries: 5 });
     getCache.set(url, { at: Date.now(), data });
     return data;
   },
